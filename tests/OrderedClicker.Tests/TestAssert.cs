@@ -1,0 +1,20 @@
+namespace OrderedClicker.Tests;
+
+internal static class TestAssert
+{
+    public static void True(bool condition, string message)
+    {
+        if (!condition)
+        {
+            throw new InvalidOperationException(message);
+        }
+    }
+
+    public static void Equal<T>(T expected, T actual, string message)
+    {
+        if (!EqualityComparer<T>.Default.Equals(expected, actual))
+        {
+            throw new InvalidOperationException($"{message}。期望：{expected}，实际：{actual}");
+        }
+    }
+}

@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>有序连点器演示靶场</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #11141a;
+      --surface: #191d26;
+      --surface-2: #1f2530;
+      --border: #3a4352;
+      --text: #edf1f8;
+      --muted: #9ea9ba;
+      --blue: #4782ff;
+      --cyan: #23cba7;
+      --purple: #9968ff;
+      --danger: #f95c6c;
+    }
+
+    * {
+      box-sizing: border-box;
+      letter-spacing: 0;
+    }
+
+    body {
+      margin: 0;
+      min-width: 1040px;
+      min-height: 720px;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif;
+    }
+
+    .shell {
+      width: 100vw;
+      height: 100vh;
+      min-height: 720px;
+      display: grid;
+      grid-template-rows: 104px 1fr 118px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 22px 34px;
+      border-bottom: 1px solid var(--border);
+      background: #141820;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 26px;
+      font-weight: 700;
+    }
+
+    header p {
+      margin: 7px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .safe-badge {
+      padding: 9px 14px;
+      border: 1px solid #2b9b83;
+      background: #15352f;
+      color: #76e8cf;
+      font-size: 14px;
+    }
+
+    main {
+      display: grid;
+      place-items: center;
+      padding: 34px;
+    }
+
+    .targets {
+      display: grid;
+      grid-template-columns: repeat(3, 220px);
+      gap: 58px;
+      align-items: center;
+    }
+
+    .target-wrap {
+      text-align: center;
+    }
+
+    .target {
+      position: relative;
+      width: 220px;
+      height: 140px;
+      border: 1px solid color-mix(in srgb, var(--accent) 70%, white 10%);
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--surface) 72%, var(--accent) 28%);
+      color: white;
+      cursor: pointer;
+      overflow: hidden;
+      box-shadow: 0 12px 30px rgb(0 0 0 / 25%);
+      transition: transform 120ms ease, background-color 120ms ease;
+    }
+
+    .target:hover {
+      background: color-mix(in srgb, var(--surface) 58%, var(--accent) 42%);
+    }
+
+    .target:active {
+      transform: scale(0.985);
+    }
+
+    .target::after {
+      content: "";
+      position: absolute;
+      inset: 50%;
+      border: 2px solid rgb(255 255 255 / 85%);
+      border-radius: 50%;
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(0);
+      pointer-events: none;
+    }
+
+    .target.pulse::after {
+      animation: pulse 420ms ease-out;
+    }
+
+    @keyframes pulse {
+      0% {
+        width: 16px;
+        height: 16px;
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(0.3);
+      }
+      100% {
+        width: 180px;
+        height: 180px;
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(1);
+      }
+    }
+
+    .target-name {
+      display: block;
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    .target-count {
+      display: block;
+      margin-top: 10px;
+      font-size: 36px;
+      font-weight: 750;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .target-hint {
+      display: block;
+      margin-top: 5px;
+      color: rgb(255 255 255 / 75%);
+      font-size: 12px;
+    }
+
+    #target-blue {
+      --accent: var(--blue);
+    }
+
+    #target-cyan {
+      --accent: var(--cyan);
+    }
+
+    #target-purple {
+      --accent: var(--purple);
+    }
+
+    .order-label {
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    footer {
+      display: grid;
+      grid-template-columns: 210px 1fr auto;
+      gap: 18px;
+      align-items: center;
+      padding: 20px 34px;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .metric strong {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    #total-count {
+      display: block;
+      margin-top: 4px;
+      color: #75a6ff;
+      font-size: 28px;
+      font-weight: 750;
+      font-variant-numeric: tabular-nums;
+    }
+
+    #sequence-log {
+      min-width: 0;
+      height: 58px;
+      padding: 10px 12px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      background: var(--surface-2);
+      color: var(--muted);
+      line-height: 36px;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    #reset-button {
+      width: 124px;
+      height: 40px;
+      border: 1px solid var(--danger);
+      border-radius: 4px;
+      background: #3b2028;
+      color: #ffabb4;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    #reset-button:hover {
+      background: #4b252f;
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div>
+        <h1>有序连点器演示靶场</h1>
+        <p>用于验证点位顺序、点击次数和循环结果。页面完全离线，不会提交任何数据。</p>
+      </div>
+      <div class="safe-badge">安全测试页面</div>
+    </header>
+
+    <main>
+      <section class="targets" aria-label="点击目标">
+        <div class="target-wrap">
+          <button class="target" id="target-blue" data-color="蓝色">
+            <span class="target-name">蓝色按钮</span>
+            <span class="target-count" id="blue-count">0</span>
+            <span class="target-hint">点位 1 · 每轮点击 2 次</span>
+          </button>
+          <div class="order-label">第一步</div>
+        </div>
+
+        <div class="target-wrap">
+          <button class="target" id="target-cyan" data-color="青色">
+            <span class="target-name">青色按钮</span>
+            <span class="target-count" id="cyan-count">0</span>
+            <span class="target-hint">点位 2 · 每轮点击 1 次</span>
+          </button>
+          <div class="order-label">第二步</div>
+        </div>
+
+        <div class="target-wrap">
+          <button class="target" id="target-purple" data-color="紫色">
+            <span class="target-name">紫色按钮</span>
+            <span class="target-count" id="purple-count">0</span>
+            <span class="target-hint">点位 3 · 每轮点击 3 次</span>
+          </button>
+          <div class="order-label">第三步</div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="metric">
+        <strong>总点击次数</strong>
+        <span id="total-count">0</span>
+      </div>
+      <div id="sequence-log" aria-live="polite">尚未记录点击</div>
+      <button id="reset-button" type="button">重置计数</button>
+    </footer>
+  </div>
+
+  <script>
+    const counts = { blue: 0, cyan: 0, purple: 0 };
+    const names = { blue: "蓝", cyan: "青", purple: "紫" };
+    const sequence = [];
+    let total = 0;
+
+    function render() {
+      document.querySelector("#blue-count").textContent = counts.blue;
+      document.querySelector("#cyan-count").textContent = counts.cyan;
+      document.querySelector("#purple-count").textContent = counts.purple;
+      document.querySelector("#total-count").textContent = total;
+      document.querySelector("#sequence-log").textContent = sequence.length
+        ? `最近点击顺序：${sequence.slice(-18).join(" → ")}`
+        : "尚未记录点击";
+    }
+
+    document.querySelectorAll(".target").forEach((button) => {
+      button.addEventListener("click", () => {
+        const color = button.id.replace("target-", "");
+        counts[color] += 1;
+        total += 1;
+        sequence.push(names[color]);
+        button.classList.remove("pulse");
+        void button.offsetWidth;
+        button.classList.add("pulse");
+        render();
+      });
+    });
+
+    document.querySelector("#reset-button").addEventListener("click", () => {
+      counts.blue = 0;
+      counts.cyan = 0;
+      counts.purple = 0;
+      total = 0;
+      sequence.length = 0;
+      render();
+    });
+
+    render();
+  </script>
+</body>
+</html>

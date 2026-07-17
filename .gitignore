@@ -1,0 +1,16 @@
+.dotnet-home/
+.nuget/
+.tools/
+.tmp/
+**/bin/
+**/obj/
+publish/
+build-diagnostic.log
+docs/superpowers/
+
+# 视频教程的本地生成产物。成品通过 GitHub Releases 分发。
+操作指导/*.mp4
+操作指导/assets/audio/
+操作指导/assets/clips/
+操作指导/assets/有序连点器-无字幕母版.mp4
+操作指导/assets/concat.txt

@@ -1,0 +1,1639 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>有序连点器操作指导 PRD</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #11141a;
+      --surface: #191d26;
+      --surface-2: #1f2530;
+      --surface-3: #252c38;
+      --input: #151920;
+      --border: #3a4352;
+      --grid: #2d3542;
+      --text: #edf1f8;
+      --muted: #9ea9ba;
+      --blue: #4782ff;
+      --blue-soft: #1e315c;
+      --cyan: #37bee8;
+      --cyan-soft: #173644;
+      --green: #23cba7;
+      --green-soft: #153a33;
+      --amber: #f6b73c;
+      --amber-soft: #3d3118;
+      --red: #f95c6c;
+      --red-soft: #412028;
+      --purple: #9968ff;
+      --purple-soft: #30234e;
+      --nav-width: 276px;
+      --content-width: 1040px;
+    }
+
+    * {
+      box-sizing: border-box;
+      letter-spacing: 0;
+    }
+
+    html {
+      scroll-behavior: smooth;
+      background: var(--bg);
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif;
+      font-size: 15px;
+      line-height: 1.75;
+    }
+
+    a {
+      color: inherit;
+    }
+
+    button {
+      font: inherit;
+    }
+
+    .sidebar {
+      position: fixed;
+      inset: 0 auto 0 0;
+      z-index: 20;
+      width: var(--nav-width);
+      overflow-y: auto;
+      border-right: 1px solid var(--border);
+      background: #141820;
+    }
+
+    .brand {
+      padding: 26px 22px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .brand strong {
+      display: block;
+      color: var(--text);
+      font-size: 18px;
+      line-height: 1.4;
+    }
+
+    .brand span {
+      display: block;
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    nav {
+      padding: 14px 10px 90px;
+    }
+
+    nav a {
+      display: block;
+      margin: 2px 0;
+      padding: 9px 12px;
+      border-left: 3px solid transparent;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 13px;
+    }
+
+    nav a:hover,
+    nav a:focus-visible {
+      border-left-color: var(--cyan);
+      background: var(--surface-2);
+      color: var(--text);
+      outline: none;
+    }
+
+    .sidebar-actions {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      width: var(--nav-width);
+      padding: 12px;
+      border-top: 1px solid var(--border);
+      background: #141820;
+    }
+
+    .sidebar-actions button {
+      height: 36px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--surface-2);
+      color: var(--text);
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .sidebar-actions button:first-child {
+      border-color: var(--blue);
+      background: var(--blue-soft);
+      color: #cbdcff;
+    }
+
+    .page {
+      margin-left: var(--nav-width);
+      min-height: 100vh;
+    }
+
+    .topbar {
+      border-bottom: 1px solid var(--border);
+      background: #141820;
+    }
+
+    .topbar-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: min(calc(100% - 48px), var(--content-width));
+      min-height: 62px;
+      margin: 0 auto;
+      gap: 24px;
+    }
+
+    .doc-title {
+      font-size: 14px;
+      font-weight: 650;
+    }
+
+    .doc-meta {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .meta-tag {
+      padding: 3px 8px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    main {
+      width: min(calc(100% - 48px), var(--content-width));
+      margin: 0 auto;
+      padding: 42px 0 90px;
+    }
+
+    .intro {
+      padding-bottom: 34px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .eyebrow {
+      color: var(--cyan);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    h1 {
+      margin: 8px 0 12px;
+      color: var(--text);
+      font-size: 36px;
+      line-height: 1.25;
+    }
+
+    .lead {
+      max-width: 820px;
+      margin: 0;
+      color: #bdc7d6;
+      font-size: 17px;
+    }
+
+    .goal-strip {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-top: 24px;
+    }
+
+    .goal-item {
+      min-height: 86px;
+      padding: 14px;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      background: var(--surface);
+    }
+
+    .goal-item strong {
+      display: block;
+      color: var(--text);
+      font-size: 14px;
+    }
+
+    .goal-item span {
+      display: block;
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .quick-links {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .quick-link {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 42px;
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--surface-2);
+      color: var(--text);
+      text-align: center;
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .quick-link:hover,
+    .quick-link:focus-visible {
+      border-color: var(--cyan);
+      background: var(--cyan-soft);
+      color: #bceeff;
+      outline: none;
+    }
+
+    .quick-link.primary {
+      border-color: var(--blue);
+      background: var(--blue-soft);
+      color: #d1dfff;
+    }
+
+    section {
+      scroll-margin-top: 26px;
+      padding: 44px 0 4px;
+    }
+
+    .section-heading {
+      display: grid;
+      grid-template-columns: 42px 1fr;
+      gap: 12px;
+      align-items: start;
+      margin-bottom: 22px;
+    }
+
+    .section-number {
+      display: grid;
+      place-items: center;
+      width: 36px;
+      height: 36px;
+      border: 1px solid var(--blue);
+      background: var(--blue-soft);
+      color: #cbdcff;
+      font-weight: 750;
+    }
+
+    h2 {
+      margin: 0;
+      color: var(--text);
+      font-size: 24px;
+      line-height: 1.4;
+    }
+
+    .section-heading p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    h3 {
+      margin: 30px 0 12px;
+      color: var(--text);
+      font-size: 18px;
+    }
+
+    h4 {
+      margin: 0 0 8px;
+      color: var(--text);
+      font-size: 15px;
+    }
+
+    p {
+      margin: 10px 0;
+    }
+
+    .panel,
+    .step,
+    .parameter,
+    .faq,
+    .check-group {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--surface);
+    }
+
+    .panel {
+      padding: 18px 20px;
+    }
+
+    .panel + .panel {
+      margin-top: 12px;
+    }
+
+    .tip,
+    .warning,
+    .danger,
+    .result {
+      margin: 16px 0;
+      padding: 14px 16px;
+      border-left: 4px solid;
+      background: var(--surface);
+    }
+
+    .tip {
+      border-color: var(--cyan);
+      background: var(--cyan-soft);
+      color: #c7edf8;
+    }
+
+    .warning {
+      border-color: var(--amber);
+      background: var(--amber-soft);
+      color: #f9dda2;
+    }
+
+    .danger {
+      border-color: var(--red);
+      background: var(--red-soft);
+      color: #ffc3ca;
+    }
+
+    .result {
+      border-color: var(--green);
+      background: var(--green-soft);
+      color: #b8f0e3;
+    }
+
+    kbd {
+      display: inline-block;
+      min-width: 34px;
+      margin: 0 2px;
+      padding: 2px 8px;
+      border: 1px solid #5d6a7d;
+      border-bottom-width: 3px;
+      border-radius: 4px;
+      background: var(--surface-3);
+      color: var(--text);
+      font-family: "Segoe UI", sans-serif;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.5;
+      text-align: center;
+    }
+
+    code {
+      padding: 2px 5px;
+      border: 1px solid var(--border);
+      background: var(--input);
+      color: #c9d9ff;
+      font-family: Consolas, monospace;
+      font-size: 0.9em;
+    }
+
+    table {
+      width: 100%;
+      margin: 14px 0 22px;
+      border-collapse: collapse;
+      background: var(--surface);
+      font-size: 13px;
+    }
+
+    th,
+    td {
+      padding: 11px 12px;
+      border: 1px solid var(--grid);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: var(--surface-2);
+      color: var(--text);
+      font-weight: 700;
+    }
+
+    td {
+      color: #c9d1dd;
+    }
+
+    .image-frame {
+      position: relative;
+      margin: 20px 0;
+      padding: 10px;
+      border: 1px solid var(--border);
+      background: #0d1015;
+    }
+
+    .image-frame img {
+      display: block;
+      width: 100%;
+      height: auto;
+      cursor: zoom-in;
+    }
+
+    .image-caption {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      margin-top: 9px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .marker {
+      display: inline-grid;
+      place-items: center;
+      width: 24px;
+      height: 24px;
+      margin-right: 6px;
+      border: 1px solid var(--blue);
+      background: var(--blue-soft);
+      color: #d7e2ff;
+      font-size: 12px;
+      font-weight: 750;
+    }
+
+    .interface-grid,
+    .parameter-grid,
+    .faq-grid,
+    .check-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .interface-item {
+      padding: 14px 16px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .interface-item p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .steps {
+      display: grid;
+      gap: 14px;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 58px 1fr;
+      overflow: hidden;
+    }
+
+    .step-index {
+      display: grid;
+      place-items: center;
+      border-right: 1px solid var(--border);
+      background: var(--surface-2);
+      color: var(--cyan);
+      font-size: 22px;
+      font-weight: 750;
+    }
+
+    .step-body {
+      padding: 18px 20px;
+    }
+
+    .step-body h3 {
+      margin: 0 0 10px;
+      font-size: 17px;
+    }
+
+    .step-fields {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px 18px;
+      margin-top: 12px;
+    }
+
+    .step-field {
+      min-width: 0;
+    }
+
+    .step-field strong {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 650;
+    }
+
+    .step-field span {
+      display: block;
+      margin-top: 2px;
+      color: #d6dde8;
+      font-size: 13px;
+    }
+
+    .parameter {
+      padding: 16px;
+    }
+
+    .parameter .unit {
+      display: inline-block;
+      margin-left: 7px;
+      padding: 1px 6px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .parameter p {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .formula {
+      padding: 14px 16px;
+      border: 1px solid var(--purple);
+      background: var(--purple-soft);
+      color: #decfff;
+      font-family: Consolas, "Microsoft YaHei UI", monospace;
+      font-size: 13px;
+    }
+
+    .shortcut-row {
+      display: grid;
+      grid-template-columns: 88px 1fr 1fr;
+      border: 1px solid var(--border);
+      border-bottom: 0;
+      background: var(--surface);
+    }
+
+    .shortcut-row:last-child {
+      border-bottom: 1px solid var(--border);
+    }
+
+    .shortcut-row > div {
+      padding: 12px;
+      border-right: 1px solid var(--border);
+    }
+
+    .shortcut-row > div:last-child {
+      border-right: 0;
+    }
+
+    .shortcut-row .key {
+      display: grid;
+      place-items: center;
+      background: var(--surface-2);
+    }
+
+    .faq {
+      padding: 15px 16px;
+    }
+
+    .faq strong {
+      display: block;
+      color: var(--text);
+    }
+
+    .faq p {
+      margin: 7px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .check-group {
+      padding: 16px;
+    }
+
+    .check-list {
+      margin: 12px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .check-list li {
+      position: relative;
+      padding: 6px 0 6px 28px;
+      color: #cfd7e3;
+    }
+
+    .check-list li::before {
+      content: "";
+      position: absolute;
+      top: 10px;
+      left: 0;
+      width: 15px;
+      height: 15px;
+      border: 1px solid var(--green);
+      background: var(--green-soft);
+    }
+
+    .image-dialog {
+      width: min(96vw, 1500px);
+      max-width: none;
+      padding: 10px;
+      border: 1px solid var(--border);
+      background: #0b0e13;
+      color: var(--text);
+    }
+
+    .image-dialog::backdrop {
+      background: rgb(0 0 0 / 82%);
+    }
+
+    .image-dialog img {
+      display: block;
+      width: 100%;
+      max-height: 86vh;
+      object-fit: contain;
+    }
+
+    .dialog-close {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      width: 40px;
+      height: 40px;
+      border: 1px solid var(--red);
+      background: var(--red-soft);
+      color: #ffc3ca;
+      cursor: pointer;
+      font-size: 18px;
+    }
+
+    .footer-note {
+      margin-top: 60px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    @media (max-width: 1050px) {
+      :root {
+        --nav-width: 230px;
+      }
+
+      .goal-strip {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .interface-grid,
+      .parameter-grid,
+      .faq-grid,
+      .check-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .sidebar {
+        position: static;
+        width: 100%;
+        max-height: none;
+      }
+
+      nav,
+      .sidebar-actions {
+        display: none;
+      }
+
+      .page {
+        margin-left: 0;
+      }
+
+      main,
+      .topbar-inner {
+        width: min(calc(100% - 28px), var(--content-width));
+      }
+
+      .topbar-inner {
+        align-items: flex-start;
+        flex-direction: column;
+        padding: 14px 0;
+      }
+
+      .doc-meta {
+        justify-content: flex-start;
+      }
+
+      h1 {
+        font-size: 28px;
+      }
+
+      .goal-strip,
+      .quick-links,
+      .step-fields {
+        grid-template-columns: 1fr;
+      }
+
+      .shortcut-row {
+        grid-template-columns: 72px 1fr;
+      }
+
+      .shortcut-row > div:last-child {
+        grid-column: 1 / -1;
+        border-top: 1px solid var(--border);
+      }
+    }
+
+    @media print {
+      :root {
+        color-scheme: light;
+        --bg: #ffffff;
+        --surface: #ffffff;
+        --surface-2: #eef2f7;
+        --surface-3: #e5eaf1;
+        --input: #f4f6f9;
+        --border: #aeb8c6;
+        --grid: #c8d0db;
+        --text: #17202d;
+        --muted: #4f5c6e;
+        --blue-soft: #e7efff;
+        --cyan-soft: #e3f6fa;
+        --green-soft: #e4f7f1;
+        --amber-soft: #fff4d8;
+        --red-soft: #ffe9ec;
+        --purple-soft: #f0eaff;
+      }
+
+      body {
+        background: white;
+        color: #17202d;
+        font-size: 11pt;
+      }
+
+      .lead {
+        color: #4f5c6e;
+      }
+
+      .quick-link,
+      .quick-link.primary {
+        color: #243247;
+      }
+
+      .tip {
+        color: #13566b;
+      }
+
+      .warning {
+        color: #73520b;
+      }
+
+      .danger {
+        color: #8a2733;
+      }
+
+      .result {
+        color: #17644f;
+      }
+
+      .sidebar,
+      .topbar,
+      .sidebar-actions {
+        display: none !important;
+      }
+
+      .page {
+        margin-left: 0;
+      }
+
+      main {
+        width: 100%;
+        padding: 0;
+      }
+
+      section {
+        padding-top: 24px;
+      }
+
+      h1 {
+        font-size: 28pt;
+      }
+
+      h2 {
+        font-size: 18pt;
+      }
+
+      .intro {
+        break-after: page;
+      }
+
+      .image-frame,
+      .step,
+      .panel,
+      .parameter,
+      .faq,
+      table {
+        break-inside: avoid;
+      }
+
+      .image-frame img {
+        max-height: 620px;
+        object-fit: contain;
+      }
+
+      a {
+        text-decoration: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand">
+      <strong>有序连点器</strong>
+      <span>零基础操作指导 PRD</span>
+    </div>
+    <nav aria-label="文档章节">
+      <a href="#overview">01 产品概览</a>
+      <a href="#preparation">02 使用前准备</a>
+      <a href="#interface">03 界面认识</a>
+      <a href="#quick-start">04 十二步快速入门</a>
+      <a href="#parameters">05 参数详细解释</a>
+      <a href="#execution">06 开始、暂停与停止</a>
+      <a href="#profiles">07 保存与加载方案</a>
+      <a href="#themes">08 主题与使用说明</a>
+      <a href="#display">09 DPI 与多显示器</a>
+      <a href="#troubleshooting">10 常见问题</a>
+      <a href="#safety">11 安全建议</a>
+      <a href="#checklist">12 操作检查清单</a>
+    </nav>
+    <div class="sidebar-actions">
+      <button type="button" onclick="window.print()">打印 / PDF</button>
+      <button type="button" onclick="window.scrollTo({top:0,behavior:'smooth'})">返回顶部</button>
+    </div>
+  </aside>
+
+  <div class="page">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="doc-title">有序连点器操作指导</div>
+        <div class="doc-meta">
+          <span class="meta-tag">适用系统：Windows 10/11 x64</span>
+          <span class="meta-tag">目标用户：零基础普通用户</span>
+          <span class="meta-tag">更新日期：2026-07-17</span>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <article class="intro">
+        <div class="eyebrow">操作指导 PRD · 极光科技深色模式</div>
+        <h1>从第一次启动，到完成多点循环点击</h1>
+        <p class="lead">
+          本指导不要求你理解编程或坐标原理。按照步骤操作，你可以依次记录多个点击位置，
+          为每个点设置不同的点击次数和等待时间，再让程序按照顺序循环执行。
+        </p>
+
+        <div class="goal-strip">
+          <div class="goal-item">
+            <strong>预计阅读时间</strong>
+            <span>完整阅读约 15 分钟，快速入门约 6 分钟。</span>
+          </div>
+          <div class="goal-item">
+            <strong>完成目标</strong>
+            <span>采集三个点位，执行两轮，并核对 4、2、6 的点击结果。</span>
+          </div>
+          <div class="goal-item">
+            <strong>核心快捷键</strong>
+            <span>F8 采点，F9 开始或暂停，F10 紧急停止。</span>
+          </div>
+          <div class="goal-item">
+            <strong>安全原则</strong>
+            <span>首次只在专用演示靶场测试，不操作支付或删除页面。</span>
+          </div>
+        </div>
+
+        <div class="quick-links" aria-label="快速入口">
+          <a class="quick-link primary" href="有序连点器-完整操作教程.mp4">播放 10 分钟完整视频</a>
+          <a class="quick-link" href="连点演示靶场.html">打开安全演示靶场</a>
+          <a class="quick-link" href="有序连点器-视频字幕.srt" download>下载视频字幕</a>
+        </div>
+
+        <div class="danger">
+          <strong>重要提醒：</strong>
+          自动点击会真实控制鼠标。首次使用必须先将总循环次数设置为 1，并在
+          <code>连点演示靶场.html</code> 中验证。任何时候都可以按 <kbd>F10</kbd> 停止。
+        </div>
+      </article>
+
+      <section id="overview">
+        <div class="section-heading">
+          <span class="section-number">01</span>
+          <div>
+            <h2>产品概览</h2>
+            <p>先理解软件能做什么，以及一个完整方案由哪些内容组成。</p>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3>软件可以完成的工作</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>能力</th>
+                <th>说明</th>
+                <th>典型用途</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>多个有序点位</td>
+                <td>按照表格中的顺序，从第一个启用点执行到最后一个启用点。</td>
+                <td>依次点击“选择、确认、下一步”等固定位置。</td>
+              </tr>
+              <tr>
+                <td>单点独立参数</td>
+                <td>每个点都可以单独设置点击次数、点击间隔和点后等待。</td>
+                <td>一个位置点击两次，另一个位置只点击一次。</td>
+              </tr>
+              <tr>
+                <td>总循环次数</td>
+                <td>全部点位执行完一遍算一轮，可以重复多轮。</td>
+                <td>将同一组操作重复 2 次、10 次或更多次。</td>
+              </tr>
+              <tr>
+                <td>暂停与停止</td>
+                <td>运行时按 F9 暂停或继续，按 F10 随时停止。</td>
+                <td>发现目标窗口变化时立即暂停或终止。</td>
+              </tr>
+              <tr>
+                <td>方案保存</td>
+                <td>保存点位、顺序、参数、显示器信息和循环配置。</td>
+                <td>下次直接加载，无需重新填写参数。</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="tip">
+          一个“方案”可以理解为一张完整的操作清单：点击哪些位置、按什么顺序、
+          每个位置点击几次、等待多久，以及整张清单重复多少轮。
+        </div>
+      </section>
+
+      <section id="preparation">
+        <div class="section-heading">
+          <span class="section-number">02</span>
+          <div>
+            <h2>使用前准备</h2>
+            <p>在采点前先确认系统、权限、显示器和快捷键环境。</p>
+          </div>
+        </div>
+
+        <div class="check-grid">
+          <div class="check-group">
+            <h4>系统准备</h4>
+            <ul class="check-list">
+              <li>使用 Windows 10 或 Windows 11 x64。</li>
+              <li>找到并运行 <code>OrderedClicker.exe</code>。</li>
+              <li>确认软件主界面能够正常显示。</li>
+              <li>首次测试打开本地演示靶场。</li>
+            </ul>
+          </div>
+          <div class="check-group">
+            <h4>环境准备</h4>
+            <ul class="check-list">
+              <li>暂时关闭可能占用 F8、F9、F10 的程序。</li>
+              <li>确认显示器排列、分辨率和缩放比例不再变化。</li>
+              <li>关闭桌面通知，避免弹窗遮挡目标位置。</li>
+              <li>让连点器和目标程序使用相同权限运行。</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="warning">
+          <strong>权限说明：</strong>
+          普通权限运行的连点器，通常不能可靠控制“以管理员身份运行”的目标程序。
+          如果目标程序使用管理员权限，请关闭两者后，再让连点器也以管理员身份运行。
+        </div>
+      </section>
+
+      <section id="interface">
+        <div class="section-heading">
+          <span class="section-number">03</span>
+          <div>
+            <h2>界面认识</h2>
+            <p>主界面从上到下分为方案区、点位表、点位工具栏、执行区和状态栏。</p>
+          </div>
+        </div>
+
+        <figure class="image-frame">
+          <img src="assets/screenshots/主界面-极光科技.png" alt="有序连点器极光科技深色主界面" data-zoomable>
+          <figcaption class="image-caption">
+            <span>极光科技深色主界面。点击图片可以放大查看。</span>
+            <span>真实软件截图</span>
+          </figcaption>
+        </figure>
+
+        <div class="interface-grid">
+          <div class="interface-item">
+            <h4><span class="marker">1</span>方案名称</h4>
+            <p>给当前方案起一个容易识别的名称，例如“三点演示方案”。</p>
+          </div>
+          <div class="interface-item">
+            <h4><span class="marker">2</span>总循环次数</h4>
+            <p>所有启用点位按顺序执行完一遍算一轮，这里决定总共执行几轮。</p>
+          </div>
+          <div class="interface-item">
+            <h4><span class="marker">3</span>轮间等待</h4>
+            <p>上一轮全部结束后，到下一轮开始前的等待时间，单位为毫秒。</p>
+          </div>
+          <div class="interface-item">
+            <h4><span class="marker">4</span>点位表格</h4>
+            <p>显示点位顺序、坐标、点击次数、间隔、点后等待和所属显示器。</p>
+          </div>
+          <div class="interface-item">
+            <h4><span class="marker">5</span>点位操作栏</h4>
+            <p>用于采点、调整顺序、删除、清空、设置主题和打开使用说明。</p>
+          </div>
+          <div class="interface-item">
+            <h4><span class="marker">6</span>执行与状态</h4>
+            <p>开始、暂停、停止任务，并显示当前循环、点位和点击进度。</p>
+          </div>
+        </div>
+
+        <h3>点位表格各列含义</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>列名</th>
+              <th>是否可修改</th>
+              <th>含义</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>启用</td><td>可以</td><td>取消勾选后，该点位保留在方案中，但执行时会跳过。</td></tr>
+            <tr><td>顺序</td><td>通过上移/下移</td><td>点位的执行顺序，从 1 开始。</td></tr>
+            <tr><td>X / Y</td><td>只读</td><td>采点时记录的屏幕物理坐标。</td></tr>
+            <tr><td>点击次数</td><td>可以</td><td>当前点位在每一轮中连续点击多少次。</td></tr>
+            <tr><td>点击间隔(ms)</td><td>可以</td><td>同一点位多次点击之间等待多少毫秒。</td></tr>
+            <tr><td>点后等待(ms)</td><td>可以</td><td>当前点位完成后，到下一个点位开始前等待多少毫秒。</td></tr>
+            <tr><td>显示器</td><td>只读</td><td>采点时鼠标所在的显示器，用于检测显示环境变化。</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="quick-start">
+        <div class="section-heading">
+          <span class="section-number">04</span>
+          <div>
+            <h2>十二步快速入门</h2>
+            <p>按照以下步骤完成一个三点、两轮的安全演示方案。</p>
+          </div>
+        </div>
+
+        <div class="steps">
+          <article class="step">
+            <div class="step-index">1</div>
+            <div class="step-body">
+              <h3>启动软件和演示靶场</h3>
+              <div class="step-fields">
+                <div class="step-field"><strong>操作目的</strong><span>建立安全、可核对的测试环境。</span></div>
+                <div class="step-field"><strong>操作位置</strong><span>连点器 EXE 和本指导目录中的演示靶场。</span></div>
+                <div class="step-field"><strong>操作步骤</strong><span>先打开连点器，再打开“连点演示靶场.html”。</span></div>
+                <div class="step-field"><strong>正确结果</strong><span>屏幕上同时存在连点器和三个彩色按钮。</span></div>
+                <div class="step-field"><strong>注意事项</strong><span>打开后不要再缩放或移动靶场窗口。</span></div>
+                <div class="step-field"><strong>常见错误</strong><span>先采点后又调整目标窗口，导致坐标偏移。</span></div>
+              </div>
+            </div>
+          </article>
+
+          <article class="step">
+            <div class="step-index">2</div>
+            <div class="step-body">
+              <h3>填写方案名称</h3>
+              <div class="step-fields">
+                <div class="step-field"><strong>操作目的</strong><span>方便保存后识别方案。</span></div>
+                <div class="step-field"><strong>操作位置</strong><span>主界面左上角“方案名称”。</span></div>
+                <div class="step-field"><strong>操作步骤</strong><span>输入“三点演示方案”。</span></div>
+                <div class="step-field"><strong>正确结果</strong><span>输入框显示完整名称。</span></div>
+                <div class="step-field"><strong>注意事项</strong><span>名称只用于识别，不影响点击顺序。</span></div>
+                <div class="step-field"><strong>常见错误</strong><span>多个方案使用相同名称，后续难以区分。</span></div>
+              </div>
+            </div>
+          </article>
+
+          <article class="step">
+            <div class="step-index">3</div>
+            <div class="step-body">
+              <h3>开启采点模式</h3>
+              <div class="step-fields">
+                <div class="step-field"><strong>操作目的</strong><span>允许 F8 记录当前鼠标位置。</span></div>
+                <div class="step-field"><strong>操作位置</strong><span>表格下方“采点模式 (F8)”按钮。</span></div>
+                <div class="step-field"><strong>操作步骤</strong><span>单击按钮，观察按钮文字变为“结束采点”。</span></div>
+                <div class="step-field"><strong>正确结果</strong><span>状态栏提示采点模式已开启。</span></div>
+                <div class="step-field"><strong>注意事项</strong><span>仅开启模式不会立即记录坐标，必须按 F8。</span></div>
+                <div class="step-field"><strong>常见错误</strong><span>直接点击目标按钮，而没有按 F8。</span></div>
+              </div>
+            </div>
+          </article>
+
+          <article class="step">
+            <div class="step-index">4</div>
+            <div class="step-body">
+              <h3>依次采集三个点位</h3>
+              <div class="step-fields">
+                <div class="step-field"><strong>操作目的</strong><span>建立蓝、青、紫三个有序点位。</span></div>
+                <div class="step-field"><strong>操作位置</strong><span>演示靶场三个按钮的中心。</span></div>
+                <div class="step-field"><strong>操作步骤</strong><span>鼠标移到蓝色按钮中心按 F8，再对青色和紫色重复。</span></div>
+                <div class="step-field"><strong>正确结果</strong><span>表格出现三行，顺序依次为 1、2、3。</span></div>
+                <div class="step-field"><strong>注意事项</strong><span>按 F8 时不要点击鼠标，保持指针稳定。</span></div>
+                <div class="step-field"><strong>常见错误</strong><span>在按钮边缘采点，窗口轻微变化后更容易偏离。</span></div>
+              </div>
+            </div>
+          </article>
+
+          <article class="step">
+            <div class="step-index">5</div>
+            <div class="step-body">
+              <h3>结束采点并检查顺序</h3>
+              <div class="step-fields">
+                <div class="step-field"><strong>操作目的</strong><span>防止后续误按 F8 增加多余点位。</span></div>
+                <div class="step-field"><strong>操作位置</strong><span>“结束采点”按钮和点位表格。</span></div>
+                <div class="step-field"><strong>操作步骤</strong><span>单击结束采点，确认三行坐标和显示器信息均存在。</span></div>
+                <div class="step-field"><strong>正确结果</strong><span>按钮恢复为“采点模式 (F8)”。</span></div>
+                <div class="step-field"><strong>注意事项</strong><span>如果顺序错误，可以选中行后使用上移或下移。</span></div>
+                <div class="step-field"><strong>常见错误</strong><span>采点后忘记关闭模式，后续按 F8 又增加了点位。</span></div>
+              </div>
+            </div>
+          </article>
+
+          <article class="step">
+            <div class="step-index">6</div>
+            <div class="step-body">
+              <h3>设置三个点位的参数</h3>
+              <div class="step-fields">
+                <div class="step-field"><strong>操作目的</strong><span>让三个按钮以不同次数和间隔点击。</span></div>
+                <div class="step-field"><strong>操作位置</strong><span>点击次数、点击间隔、点后等待三列。</span></div>
+                <div class="step-field"><strong>操作步骤</strong><span>蓝色填 2/500/800，青色填 1/0/600，紫色填 3/300/1000。</span></div>
+                <div class="step-field"><strong>正确结果</strong><span>表格中的九个参数与示例表一致。</span></div>
+                <div class="step-field"><strong>注意事项</strong><span>所有时间单位都是毫秒，1000 毫秒等于 1 秒。</span></div>
+                <div class="step-field"><strong>常见错误</strong><span>把 1 秒误填为 1，而不是 1000。</span></div>
+              </div>
+            </div>
+          </article>
+
+          <article class="step">
+            <div class="step-index">7</div>
+            <div class="step-body">
+              <h3>设置循环参数</h3>
+              <div class="step-fields">
+                <div class="step-field"><strong>操作目的</strong><span>让整组点位执行两遍。</span></div>
+                <div class="step-field"><strong>操作位置</strong><span>顶部“总循环次数”和“轮间等待”。</span></div>
+                <div class="step-field"><strong>操作步骤</strong><span>总循环次数填 2，轮间等待填 1500。</span></div>
+                <div class="step-field"><strong>正确结果</strong><span>全部三点执行完后等待 1.5 秒，再执行第二轮。</span></div>
+                <div class="step-field"><strong>注意事项</strong><span>首次实际验证时建议先填 1，确认后再改为 2。</span></div>
+                <div class="step-field"><strong>常见错误</strong><span>把总循环次数理解为单个点的点击次数。</span></div>
+              </div>
+            </div>
+          </article>
+
+          <article class="step">
+            <div class="step-index">8</div>
+            <div class="step-body">
+              <h3>重置靶场并按 F9 开始</h3>
+              <div class="step-fields">
+                <div class="step-field"><strong>操作目的</strong><span>从零计数开始核对执行结果。</span></div>
+                <div class="step-field"><strong>操作位置</strong><span>靶场“重置计数”和键盘 F9。</span></div>
+                <div class="step-field"><strong>操作步骤</strong><span>重置后切回连点器，按 F9，利用三秒倒计时切到靶场。</span></div>
+                <div class="step-field"><strong>正确结果</strong><span>状态从倒计时变为执行中，按钮计数开始增长。</span></div>
+                <div class="step-field"><strong>注意事项</strong><span>倒计时期间不要改变任何窗口位置。</span></div>
+                <div class="step-field"><strong>常见错误</strong><span>倒计时期间拖动靶场窗口，导致点击位置失效。</span></div>
+              </div>
+            </div>
+          </article>
+
+          <article class="step">
+            <div class="step-index">9</div>
+            <div class="step-body">
+              <h3>观察执行顺序和状态栏</h3>
+              <div class="step-fields">
+                <div class="step-field"><strong>操作目的</strong><span>确认程序按蓝、青、紫顺序执行。</span></div>
+                <div class="step-field"><strong>操作位置</strong><span>演示靶场计数和连点器底部状态栏。</span></div>
+                <div class="step-field"><strong>操作步骤</strong><span>观察每轮蓝增 2、青增 1、紫增 3。</span></div>
+                <div class="step-field"><strong>正确结果</strong><span>两轮结束后显示 4、2、6，总点击 12。</span></div>
+                <div class="step-field"><strong>注意事项</strong><span>执行过程中不要主动移动鼠标。</span></div>
+                <div class="step-field"><strong>常见错误</strong><span>手动移动鼠标后误以为程序坐标不准确。</span></div>
+              </div>
+            </div>
+          </article>
+
+          <article class="step">
+            <div class="step-index">10</div>
+            <div class="step-body">
+              <h3>练习暂停、继续和停止</h3>
+              <div class="step-fields">
+                <div class="step-field"><strong>操作目的</strong><span>掌握运行中的安全控制方式。</span></div>
+                <div class="step-field"><strong>操作位置</strong><span>键盘 F9、F10 和主界面按钮。</span></div>
+                <div class="step-field"><strong>操作步骤</strong><span>运行时按 F9 暂停，再按一次继续；另一次运行中按 F10 停止。</span></div>
+                <div class="step-field"><strong>正确结果</strong><span>暂停时计数不再变化，停止后状态回到就绪。</span></div>
+                <div class="step-field"><strong>注意事项</strong><span>发现目标窗口变化时优先按 F10。</span></div>
+                <div class="step-field"><strong>常见错误</strong><span>连续快速按多次 F9，导致暂停和继续状态判断错误。</span></div>
+              </div>
+            </div>
+          </article>
+
+          <article class="step">
+            <div class="step-index">11</div>
+            <div class="step-body">
+              <h3>保存并重新加载方案</h3>
+              <div class="step-fields">
+                <div class="step-field"><strong>操作目的</strong><span>下次直接复用相同点位和参数。</span></div>
+                <div class="step-field"><strong>操作位置</strong><span>顶部“保存”和“加载”按钮。</span></div>
+                <div class="step-field"><strong>操作步骤</strong><span>保存方案，清空点位，再点击加载并选择保存的 JSON 文件。</span></div>
+                <div class="step-field"><strong>正确结果</strong><span>三行点位和全部参数恢复。</span></div>
+                <div class="step-field"><strong>注意事项</strong><span>显示器环境改变后，即使加载成功也建议重新采点。</span></div>
+                <div class="step-field"><strong>常见错误</strong><span>直接编辑 JSON 导致格式损坏，加载失败。</span></div>
+              </div>
+            </div>
+          </article>
+
+          <article class="step">
+            <div class="step-index">12</div>
+            <div class="step-body">
+              <h3>完成最终检查</h3>
+              <div class="step-fields">
+                <div class="step-field"><strong>操作目的</strong><span>确认方案可以在当前环境安全重复执行。</span></div>
+                <div class="step-field"><strong>操作位置</strong><span>点位表、循环参数、状态栏和目标窗口。</span></div>
+                <div class="step-field"><strong>操作步骤</strong><span>核对启用状态、顺序、参数、窗口位置和 F10 可用性。</span></div>
+                <div class="step-field"><strong>正确结果</strong><span>所有检查项通过后再提高循环次数。</span></div>
+                <div class="step-field"><strong>注意事项</strong><span>任何环境变化都应重新进行一轮测试。</span></div>
+                <div class="step-field"><strong>常见错误</strong><span>第一次测试成功后无限提高循环次数，不再观察目标状态。</span></div>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section id="parameters">
+        <div class="section-heading">
+          <span class="section-number">05</span>
+          <div>
+            <h2>参数详细解释</h2>
+            <p>区分单点参数、整轮参数，以及它们如何共同决定执行时间。</p>
+          </div>
+        </div>
+
+        <div class="parameter-grid">
+          <article class="parameter">
+            <h4>点击次数 <span class="unit">次</span></h4>
+            <p>当前点位在每一轮中要点击多少次。数值为 3，表示每一轮到达该点时连续点击三次。</p>
+          </article>
+          <article class="parameter">
+            <h4>点击间隔 <span class="unit">毫秒</span></h4>
+            <p>同一点位多次点击之间的等待时间。点击次数为 1 时，不会产生同点间隔。</p>
+          </article>
+          <article class="parameter">
+            <h4>点后等待 <span class="unit">毫秒</span></h4>
+            <p>当前点位全部点击完成后，到下一个启用点位开始前的等待时间。</p>
+          </article>
+          <article class="parameter">
+            <h4>总循环次数 <span class="unit">轮</span></h4>
+            <p>全部启用点位从第一行执行到最后一行算一轮。总循环次数决定重复多少轮。</p>
+          </article>
+          <article class="parameter">
+            <h4>轮间等待 <span class="unit">毫秒</span></h4>
+            <p>一轮结束后，到下一轮第一个点位开始前的等待时间。最后一轮结束后不再等待下一轮。</p>
+          </article>
+          <article class="parameter">
+            <h4>启用状态</h4>
+            <p>取消勾选后暂时跳过该点位，但保留坐标和参数。适合临时测试部分步骤。</p>
+          </article>
+        </div>
+
+        <h3>示例参数与结果</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>点位</th>
+              <th>点击次数</th>
+              <th>点击间隔</th>
+              <th>点后等待</th>
+              <th>两轮最终计数</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>蓝色按钮</td><td>2</td><td>500 ms</td><td>800 ms</td><td>4</td></tr>
+            <tr><td>青色按钮</td><td>1</td><td>0 ms</td><td>600 ms</td><td>2</td></tr>
+            <tr><td>紫色按钮</td><td>3</td><td>300 ms</td><td>1000 ms</td><td>6</td></tr>
+          </tbody>
+        </table>
+
+        <div class="formula">
+          单点总点击数 = 单点点击次数 × 总循环次数<br>
+          蓝色：2 × 2 = 4　青色：1 × 2 = 2　紫色：3 × 2 = 6
+        </div>
+
+        <div class="warning">
+          等待时间设置过短时，目标程序可能还没有完成页面刷新，下一次点击就已经发生。
+          零基础用户建议从 500 至 1000 毫秒开始测试，再逐步缩短。
+        </div>
+      </section>
+
+      <section id="execution">
+        <div class="section-heading">
+          <span class="section-number">06</span>
+          <div>
+            <h2>开始、暂停与停止</h2>
+            <p>快捷键为全局快捷键，即使连点器不在最前面也可以使用。</p>
+          </div>
+        </div>
+
+        <div class="shortcut-row">
+          <div class="key"><kbd>F8</kbd></div>
+          <div><strong>采集点位</strong><br>只在采点模式开启时记录鼠标位置。</div>
+          <div>不会开始任务，也不会执行鼠标点击。</div>
+        </div>
+        <div class="shortcut-row">
+          <div class="key"><kbd>F9</kbd></div>
+          <div><strong>开始 / 暂停 / 继续</strong><br>空闲时开始，运行时暂停，暂停时继续。</div>
+          <div>开始前有三秒倒计时，用于切换到目标窗口。</div>
+        </div>
+        <div class="shortcut-row">
+          <div class="key"><kbd>F10</kbd></div>
+          <div><strong>立即停止</strong><br>终止倒计时、等待或点击任务。</div>
+          <div>出现异常、目标窗口移动或误点击风险时立即使用。</div>
+        </div>
+
+        <div class="danger">
+          <strong>紧急停止规则：</strong>
+          不要等待当前一轮结束。只要发现点击位置不正确、目标页面发生变化、
+          鼠标指针被遮挡或出现不应点击的窗口，立即按 <kbd>F10</kbd>。
+        </div>
+      </section>
+
+      <section id="profiles">
+        <div class="section-heading">
+          <span class="section-number">07</span>
+          <div>
+            <h2>保存与加载方案</h2>
+            <p>保存方案可以减少重复配置，但不能消除显示环境变化带来的坐标风险。</p>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3>保存方案</h3>
+          <p>
+            点击顶部“保存”后，程序会将方案写入
+            <code>%LocalAppData%\OrderedClicker\profiles</code>。
+            文件为 JSON 格式，包含点位顺序、坐标、单点参数、循环参数和显示器信息。
+          </p>
+        </div>
+        <div class="panel">
+          <h3>加载方案</h3>
+          <p>
+            点击“加载”，选择之前保存的 JSON 文件。加载成功后先检查点位数量、启用状态和参数，
+            再使用一轮测试确认坐标。加载损坏文件时，程序会提示错误，不会覆盖当前点位。
+          </p>
+        </div>
+        <div class="warning">
+          保存的是屏幕绝对坐标。如果显示器位置、分辨率、主副屏关系或缩放比例发生变化，
+          旧坐标可能失效。此时应在当前显示环境下重新采点，而不是继续使用旧方案。
+        </div>
+      </section>
+
+      <section id="themes">
+        <div class="section-heading">
+          <span class="section-number">08</span>
+          <div>
+            <h2>主题与使用说明</h2>
+            <p>主题只改变界面颜色，不改变点位、方案和点击执行行为。</p>
+          </div>
+        </div>
+
+        <figure class="image-frame">
+          <img src="assets/screenshots/主题设置.png" alt="有序连点器主题设置弹窗" data-zoomable>
+          <figcaption class="image-caption">
+            <span>点击“设置”打开主题卡片，选择后立即预览。</span>
+            <span>五套预设主题</span>
+          </figcaption>
+        </figure>
+
+        <table>
+          <thead>
+            <tr><th>主题</th><th>特点</th><th>建议场景</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>极光科技</td><td>深灰背景，蓝、青、紫多色强调。</td><td>默认推荐，适合长期操作。</td></tr>
+            <tr><td>经典深色</td><td>中性深灰，颜色干扰更低。</td><td>偏好低饱和界面的用户。</td></tr>
+            <tr><td>海洋蓝</td><td>蓝灰背景，蓝色和青色强调。</td><td>偏好冷色界面的用户。</td></tr>
+            <tr><td>翡翠绿</td><td>深绿灰背景，绿色主操作。</td><td>希望明显区分采点操作的用户。</td></tr>
+            <tr><td>明亮模式</td><td>浅灰白背景，适合明亮环境。</td><td>白天或高亮度显示器。</td></tr>
+          </tbody>
+        </table>
+
+        <div class="tip">
+          在设置弹窗中点击主题卡片会立即预览。点击“保存”后下次启动自动恢复；
+          点击“取消”、关闭窗口或按 Esc，会恢复打开设置前的主题。
+        </div>
+
+        <figure class="image-frame">
+          <img src="assets/screenshots/使用说明.png" alt="有序连点器内置使用说明弹窗" data-zoomable>
+          <figcaption class="image-caption">
+            <span>点击“使用说明”可以在软件内部快速查看快捷键和操作步骤。</span>
+            <span>内置帮助</span>
+          </figcaption>
+        </figure>
+      </section>
+
+      <section id="display">
+        <div class="section-heading">
+          <span class="section-number">09</span>
+          <div>
+            <h2>DPI、屏幕缩放与多显示器</h2>
+            <p>程序按物理屏幕坐标采点，并记录采点时的显示器信息。</p>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3>什么是屏幕缩放</h3>
+          <p>
+            Windows 显示设置中的 100%、125%、150% 等选项就是缩放比例。
+            连点器使用 Per-Monitor V2 DPI 感知，尽量确保不同缩放显示器上的坐标准确。
+          </p>
+        </div>
+
+        <div class="panel">
+          <h3>哪些变化需要重新采点</h3>
+          <ul>
+            <li>改变任意显示器的分辨率或缩放比例。</li>
+            <li>将副屏从主屏右侧移动到左侧或上方。</li>
+            <li>更换主显示器、拔插显示器或远程桌面连接。</li>
+            <li>移动或缩放目标程序窗口。</li>
+            <li>目标程序自身更新后，按钮位置发生变化。</li>
+          </ul>
+        </div>
+
+        <div class="warning">
+          开始执行时如果程序提示显示器分辨率、位置或缩放比例已变化，
+          推荐选择不继续，在当前环境下重新采点。程序不会自动按比例换算旧坐标，
+          这样可以避免静默点击到错误位置。
+        </div>
+      </section>
+
+      <section id="troubleshooting">
+        <div class="section-heading">
+          <span class="section-number">10</span>
+          <div>
+            <h2>常见问题与处理</h2>
+            <p>先停止任务，再按照从环境到参数的顺序排查。</p>
+          </div>
+        </div>
+
+        <div class="faq-grid">
+          <article class="faq">
+            <strong>按 F8 没有新增点位</strong>
+            <p>确认采点模式已经开启；检查 F8 是否被其他软件占用；也可以关闭冲突软件后重启连点器。</p>
+          </article>
+          <article class="faq">
+            <strong>按 F9 没有开始</strong>
+            <p>检查是否至少有一个启用点位；确认点击次数和等待时间都是有效整数；查看状态栏错误提示。</p>
+          </article>
+          <article class="faq">
+            <strong>点击位置出现偏移</strong>
+            <p>停止任务，确认目标窗口是否移动，检查显示器缩放、分辨率和排列是否变化，然后重新采点。</p>
+          </article>
+          <article class="faq">
+            <strong>无法点击管理员程序</strong>
+            <p>让连点器和目标程序使用相同权限。必要时关闭后，以管理员身份重新启动连点器。</p>
+          </article>
+          <article class="faq">
+            <strong>输入参数后变回原值</strong>
+            <p>只输入有效整数。点击次数必须大于零，等待时间不能是负数；输入后单击表格其他位置完成编辑。</p>
+          </article>
+          <article class="faq">
+            <strong>加载方案失败</strong>
+            <p>确认选择的是连点器保存的 JSON 文件。不要手工删除字段或加入注释；损坏文件需要重新保存。</p>
+          </article>
+          <article class="faq">
+            <strong>副屏坐标为负数</strong>
+            <p>副屏位于主屏左侧或上方时出现负坐标属于正常现象，不要手工将它改为正数。</p>
+          </article>
+          <article class="faq">
+            <strong>游戏或安全软件不响应</strong>
+            <p>反作弊、远程桌面或安全软件可能屏蔽模拟输入。不要尝试绕过安全限制，改用目标程序允许的方式。</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="safety">
+        <div class="section-heading">
+          <span class="section-number">11</span>
+          <div>
+            <h2>安全建议</h2>
+            <p>自动点击适合可逆、低风险、位置固定的重复操作。</p>
+          </div>
+        </div>
+
+        <div class="danger">
+          不要将连点器用于支付、转账、删除数据、提交不可撤销表单、发布内容或任何需要人工确认的高风险操作。
+        </div>
+
+        <table>
+          <thead>
+            <tr><th>建议</th><th>原因</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>先执行一轮</td><td>快速发现坐标、顺序和等待时间问题。</td></tr>
+            <tr><td>优先在演示靶场测试</td><td>不会影响真实业务数据，结果可以直接核对。</td></tr>
+            <tr><td>执行时不要移动鼠标</td><td>人工移动会干扰观察，也可能改变目标程序状态。</td></tr>
+            <tr><td>保持 F10 可用</td><td>发生窗口变化或误点击风险时可以立即停止。</td></tr>
+            <tr><td>定期观察执行结果</td><td>即使点位正确，目标页面内容也可能发生变化。</td></tr>
+            <tr><td>环境变化后重新采点</td><td>屏幕坐标不会自动跟随窗口和显示器变化。</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="checklist">
+        <div class="section-heading">
+          <span class="section-number">12</span>
+          <div>
+            <h2>操作检查清单</h2>
+            <p>每次正式执行前后都建议快速检查。</p>
+          </div>
+        </div>
+
+        <div class="check-grid">
+          <div class="check-group">
+            <h4>执行前</h4>
+            <ul class="check-list">
+              <li>目标窗口位置、大小和内容没有变化。</li>
+              <li>显示器分辨率、排列和缩放比例没有变化。</li>
+              <li>点位顺序与实际业务顺序一致。</li>
+              <li>不需要的点位已取消启用。</li>
+              <li>点击次数和等待时间已经核对。</li>
+              <li>首次运行只设置一轮。</li>
+              <li>确认按 F10 可以停止。</li>
+            </ul>
+          </div>
+          <div class="check-group">
+            <h4>执行后</h4>
+            <ul class="check-list">
+              <li>状态栏显示任务完成或已经停止。</li>
+              <li>目标结果与预期点击次数一致。</li>
+              <li>没有出现多余点击或跳过点位。</li>
+              <li>没有弹窗遮挡后续目标。</li>
+              <li>如需重复使用，保存当前方案。</li>
+              <li>关闭不再需要的演示靶场和目标窗口。</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="result">
+          完成快速入门演示后，蓝色按钮应显示 4，青色按钮应显示 2，紫色按钮应显示 6，
+          总点击次数应为 12。结果一致说明顺序、次数和循环配置正确。
+        </div>
+      </section>
+
+      <div class="footer-note">
+        文档版本：1.0 · 更新日期：2026-07-17 ·
+        本文档只提供软件操作说明，不建议将自动点击用于高风险或不可撤销操作。
+      </div>
+    </main>
+  </div>
+
+  <dialog class="image-dialog" id="image-dialog">
+    <button class="dialog-close" type="button" aria-label="关闭图片">×</button>
+    <img src="" alt="">
+  </dialog>
+
+  <script>
+    const imageDialog = document.querySelector("#image-dialog");
+    const dialogImage = imageDialog.querySelector("img");
+
+    document.querySelectorAll("[data-zoomable]").forEach((image) => {
+      image.addEventListener("click", () => {
+        dialogImage.src = image.src;
+        dialogImage.alt = image.alt;
+        imageDialog.showModal();
+      });
+    });
+
+    imageDialog.querySelector(".dialog-close").addEventListener("click", () => {
+      imageDialog.close();
+    });
+
+    imageDialog.addEventListener("click", (event) => {
+      if (event.target === imageDialog) {
+        imageDialog.close();
+      }
+    });
+  </script>
+</body>
+</html>
