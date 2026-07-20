@@ -35,8 +35,10 @@ if (-not (Test-Path -LiteralPath $executable)) {
     throw "发布完成但未找到 EXE：$executable"
 }
 
-$unexpectedRuntimeFiles = Get-ChildItem -LiteralPath $resolvedOutput -File |
-    Where-Object { $_.Extension -in ".dll", ".runtimeconfig.json", ".deps.json" }
+$unexpectedRuntimeFiles = @(
+    Get-ChildItem -LiteralPath $resolvedOutput -File |
+        Where-Object { $_.Extension -in ".dll", ".runtimeconfig.json", ".deps.json" }
+)
 if ($unexpectedRuntimeFiles.Count -gt 0) {
     throw "发布目录仍包含运行时依赖文件：$($unexpectedRuntimeFiles.Name -join ', ')"
 }
