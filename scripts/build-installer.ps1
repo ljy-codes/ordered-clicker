@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')]
     [string]$Version = "1.0.1",
@@ -12,6 +12,10 @@ param(
     [switch]$SkipTests
 )
 
+if ($PSVersionTable.PSVersion.Major -lt 7) {
+    throw "构建安装版需要 PowerShell 7 或更高版本。请使用 pwsh 运行本脚本。"
+}
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
@@ -20,11 +24,14 @@ $publishRoot = Join-Path $projectRoot "publish"
 $publishDirectory = Join-Path $publishRoot "win-x64"
 $packageDirectory = Join-Path $publishRoot "packages"
 $portableStagingDirectory = Join-Path $publishRoot "portable-staging"
+$productStagingDirectory = Join-Path $publishRoot "product-staging"
 $installerScript = Join-Path $projectRoot "installer\OrderedClicker.iss"
 $portableFileName = "ordered-clicker-portable-v$Version.zip"
 $installerFileName = "ordered-clicker-setup-v$Version.exe"
 $portablePath = Join-Path $packageDirectory $portableFileName
 $installerPath = Join-Path $packageDirectory $installerFileName
+
+. (Join-Path $PSScriptRoot "path-safety.ps1")
 
 function Get-FullPath {
     param(
@@ -40,22 +47,6 @@ function Get-FullPath {
     }
 
     return [System.IO.Path]::GetFullPath((Join-Path $BasePath $Path))
-}
-
-function Assert-PathWithin {
-    param(
-        [Parameter(Mandatory)]
-        [string]$Path,
-
-        [Parameter(Mandatory)]
-        [string]$ParentPath
-    )
-
-    $resolvedPath = [System.IO.Path]::GetFullPath($Path)
-    $resolvedParent = [System.IO.Path]::GetFullPath($ParentPath).TrimEnd('\') + '\'
-    if (-not $resolvedPath.StartsWith($resolvedParent, [StringComparison]::OrdinalIgnoreCase)) {
-        throw "拒绝清理项目发布目录以外的路径：$resolvedPath"
-    }
 }
 
 function Find-InnoCompiler {
@@ -108,8 +99,13 @@ function Invoke-Checked {
     }
 }
 
-Assert-PathWithin -Path $packageDirectory -ParentPath $publishRoot
-Assert-PathWithin -Path $portableStagingDirectory -ParentPath $publishRoot
+foreach ($directory in @(
+    $packageDirectory,
+    $portableStagingDirectory,
+    $productStagingDirectory
+)) {
+    Assert-SafeRecursivePath -Path $directory -ParentPath $projectRoot | Out-Null
+}
 
 if ([string]::IsNullOrWhiteSpace($ProductDirectory)) {
     $resolvedProductDirectory = Join-Path $publishRoot "product-v$Version"
@@ -125,6 +121,26 @@ else {
     $resolvedGuideSourceDirectory = Get-FullPath -Path $GuideSourceDirectory -BasePath $projectRoot
 }
 
+$guideMappings = [ordered]@{
+    "有序连点器-操作指导PRD.pdf" = "有序连点器-使用说明.pdf"
+    "有序连点器-操作指导PRD.html" = "有序连点器-使用说明.html"
+    "有序连点器-完整操作教程.mp4" = "有序连点器-视频演示.mp4"
+}
+$resolvedGuideFiles = [System.Collections.Generic.List[object]]::new()
+foreach ($sourceName in $guideMappings.Keys) {
+    $source = Join-Path $resolvedGuideSourceDirectory $sourceName
+    if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
+        throw "缺少指导文件：$source。视频属于生成产物，请先生成完整教程或使用 -GuideSourceDirectory 指定成品目录。"
+    }
+
+    $resolvedGuideFiles.Add([pscustomobject]@{
+        Source = $source
+        DestinationName = $guideMappings[$sourceName]
+    })
+}
+
+$resolvedInnoCompiler = Find-InnoCompiler -RequestedPath $InnoCompiler
+
 if (-not $SkipTests) {
     Invoke-Checked -Description "运行 .NET 自动化测试" -Command {
         & (Join-Path $PSScriptRoot "dotnet.ps1") run `
@@ -133,21 +149,25 @@ if (-not $SkipTests) {
     }
 
     Invoke-Checked -Description "运行安装器契约测试" -Command {
-        & (Join-Path $PSHOME "pwsh.exe") -NoProfile `
-            -File (Join-Path $projectRoot "tests\Installer.Tests.ps1")
+        & (Join-Path $projectRoot "tests\Installer.Tests.ps1")
     }
 }
 
 Invoke-Checked -Description "发布 Windows x64 自包含应用" -Command {
-    & (Join-Path $PSScriptRoot "publish.ps1")
+    & (Join-Path $PSScriptRoot "publish.ps1") -Version $Version
 }
 
-foreach ($directory in @($packageDirectory, $portableStagingDirectory)) {
-    Assert-PathWithin -Path $directory -ParentPath $publishRoot
-    if (Test-Path -LiteralPath $directory) {
-        Remove-Item -LiteralPath $directory -Recurse -Force
+foreach ($directory in @(
+    $packageDirectory,
+    $portableStagingDirectory,
+    $productStagingDirectory
+)) {
+    $safeDirectory = Assert-SafeRecursivePath -Path $directory -ParentPath $projectRoot
+    if (Test-Path -LiteralPath $safeDirectory) {
+        Assert-SafeRecursivePath -Path $safeDirectory -ParentPath $projectRoot | Out-Null
+        Remove-Item -LiteralPath $safeDirectory -Recurse -Force
     }
-    New-Item -ItemType Directory -Force -Path $directory | Out-Null
+    New-Item -ItemType Directory -Force -Path $safeDirectory | Out-Null
 }
 
 $publishedExecutable = Join-Path $publishDirectory "OrderedClicker.exe"
@@ -155,11 +175,22 @@ if (-not (Test-Path -LiteralPath $publishedExecutable -PathType Leaf)) {
     throw "发布完成但未找到应用程序：$publishedExecutable"
 }
 
+$publishedVersion = (Get-Item -LiteralPath $publishedExecutable).VersionInfo
+if (
+    $publishedVersion.FileVersion -ne "$Version.0" -or
+    $publishedVersion.ProductVersion -ne $Version
+) {
+    throw (
+        "应用版本不一致。期望 FileVersion=$Version.0、ProductVersion=$Version；" +
+        "实际 FileVersion=$($publishedVersion.FileVersion)、" +
+        "ProductVersion=$($publishedVersion.ProductVersion)"
+    )
+}
+
 $portableExecutable = Join-Path $portableStagingDirectory "有序连点器.exe"
 Copy-Item -LiteralPath $publishedExecutable -Destination $portableExecutable -Force
 Compress-Archive -LiteralPath $portableExecutable -DestinationPath $portablePath -CompressionLevel Optimal
 
-$resolvedInnoCompiler = Find-InnoCompiler -RequestedPath $InnoCompiler
 Invoke-Checked -Description "编译 Windows 安装程序" -Command {
     & $resolvedInnoCompiler `
         "/DAppVersion=$Version" `
@@ -172,44 +203,43 @@ if (-not (Test-Path -LiteralPath $installerPath -PathType Leaf)) {
     throw "Inno Setup 编译完成但未找到安装包：$installerPath"
 }
 
-New-Item -ItemType Directory -Force -Path $resolvedProductDirectory | Out-Null
-
-$guideMappings = [ordered]@{
-    "有序连点器-操作指导PRD.pdf" = "有序连点器-使用说明.pdf"
-    "有序连点器-操作指导PRD.html" = "有序连点器-使用说明.html"
-    "有序连点器-完整操作教程.mp4" = "有序连点器-视频演示.mp4"
-}
-
-$productFiles = [System.Collections.Generic.List[string]]::new()
+$stagedProductFiles = [System.Collections.Generic.List[string]]::new()
 foreach ($packagePath in @($installerPath, $portablePath)) {
-    $destination = Join-Path $resolvedProductDirectory ([System.IO.Path]::GetFileName($packagePath))
+    $destination = Join-Path $productStagingDirectory ([System.IO.Path]::GetFileName($packagePath))
     Copy-Item -LiteralPath $packagePath -Destination $destination -Force
-    $productFiles.Add($destination)
+    $stagedProductFiles.Add($destination)
 }
 
-foreach ($sourceName in $guideMappings.Keys) {
-    $source = Join-Path $resolvedGuideSourceDirectory $sourceName
-    if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
-        throw "缺少指导文件：$source"
-    }
-
-    $destination = Join-Path $resolvedProductDirectory $guideMappings[$sourceName]
-    Copy-Item -LiteralPath $source -Destination $destination -Force
-    $productFiles.Add($destination)
+foreach ($guideFile in $resolvedGuideFiles) {
+    $destination = Join-Path $productStagingDirectory $guideFile.DestinationName
+    Copy-Item -LiteralPath $guideFile.Source -Destination $destination -Force
+    $stagedProductFiles.Add($destination)
 }
 
-$checksumPath = Join-Path $resolvedProductDirectory "SHA256SUMS.txt"
-$checksumLines = foreach ($file in $productFiles) {
+$stagedChecksumPath = Join-Path $productStagingDirectory "SHA256SUMS.txt"
+$checksumLines = foreach ($file in $stagedProductFiles) {
     $hash = Get-FileHash -LiteralPath $file -Algorithm SHA256
     "{0}  {1}" -f $hash.Hash.ToLowerInvariant(), [System.IO.Path]::GetFileName($file)
 }
 [System.IO.File]::WriteAllLines(
-    $checksumPath,
+    $stagedChecksumPath,
     $checksumLines,
     [System.Text.UTF8Encoding]::new($false))
+
+New-Item -ItemType Directory -Force -Path $resolvedProductDirectory | Out-Null
+$destinationChecksumPath = Join-Path $resolvedProductDirectory "SHA256SUMS.txt"
+if (Test-Path -LiteralPath $destinationChecksumPath) {
+    Remove-Item -LiteralPath $destinationChecksumPath -Force
+}
+
+foreach ($stagedFile in $stagedProductFiles) {
+    $destination = Join-Path $resolvedProductDirectory ([System.IO.Path]::GetFileName($stagedFile))
+    Copy-Item -LiteralPath $stagedFile -Destination $destination -Force
+}
+Copy-Item -LiteralPath $stagedChecksumPath -Destination $destinationChecksumPath -Force
 
 Write-Host ""
 Write-Host "安装版构建完成：" -ForegroundColor Green
 Write-Host "  安装包：$(Join-Path $resolvedProductDirectory $installerFileName)"
 Write-Host "  便携版：$(Join-Path $resolvedProductDirectory $portableFileName)"
-Write-Host "  校验值：$checksumPath"
+Write-Host "  校验值：$destinationChecksumPath"

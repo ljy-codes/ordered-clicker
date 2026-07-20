@@ -72,16 +72,26 @@ Windows 10/11 x64 桌面连点器。支持有序点位、单点独立点击次�
 
 ## 构建
 
-源码构建需要 Windows 10/11 x64 和 .NET 10 SDK。构建脚本会优先使用 `.tools\dotnet` 下的本地 SDK；如果该目录不存在，则使用系统安装的 `dotnet`。生成安装版还需要 Inno Setup 7。
+源码构建需要 Windows 10/11 x64、PowerShell 7 和 .NET 10 SDK。构建脚本会优先使用 `.tools\dotnet` 下的本地 SDK；如果该目录不存在，则使用系统安装的 `dotnet`。生成安装版还需要 Inno Setup 7。
+
+完整产品包还需要指导成品目录中存在以下三个文件：
+
+```text
+有序连点器-操作指导PRD.pdf
+有序连点器-操作指导PRD.html
+有序连点器-完整操作教程.mp4
+```
+
+视频属于本地生成产物，不提交到 Git。干净检出需要先按 `scripts/guide` 中的生成脚本制作视频，或通过 `-GuideSourceDirectory` 指向已有成品目录。
 
 ```powershell
 .\scripts\dotnet.ps1 build .\OrderedClicker.sln -c Release '-m:1'
 .\scripts\dotnet.ps1 run --project .\tests\OrderedClicker.Tests\OrderedClicker.Tests.csproj -c Release
 .\scripts\publish.ps1
-.\scripts\build-installer.ps1 `
+pwsh -NoProfile -File .\scripts\build-installer.ps1 `
   -Version 1.0.1 `
   -ProductDirectory "D:\专用工具\连电器产品" `
-  -GuideSourceDirectory ".\操作指导"
+  -GuideSourceDirectory "D:\专用工具\连点器\操作指导"
 ```
 
 应用发布结果位于 `publish\win-x64`，安装器中间产物位于 `publish\packages`。可执行文件和视频成品不提交到源码仓库，统一通过 GitHub Releases 分发。

@@ -1,14 +1,18 @@
+[CmdletBinding()]
+param(
+    [ValidatePattern('^\d+\.\d+\.\d+$')]
+    [string]$Version = "1.0.1"
+)
+
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $projectFile = Join-Path $projectRoot "src\OrderedClicker\OrderedClicker.csproj"
 $outputDirectory = Join-Path $projectRoot "publish\win-x64"
-$rootPrefix = [System.IO.Path]::GetFullPath($projectRoot).TrimEnd('\') + '\'
-$resolvedOutput = [System.IO.Path]::GetFullPath($outputDirectory)
+. (Join-Path $PSScriptRoot "path-safety.ps1")
 
-if (-not $resolvedOutput.StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase)) {
-    throw "发布目录不在项目目录内：$resolvedOutput"
-}
+$resolvedOutput = Assert-SafeRecursivePath -Path $outputDirectory -ParentPath $projectRoot
 
 if (Test-Path -LiteralPath $resolvedOutput) {
+    Assert-SafeRecursivePath -Path $resolvedOutput -ParentPath $projectRoot | Out-Null
     Remove-Item -LiteralPath $resolvedOutput -Recurse -Force
 }
 
@@ -23,6 +27,10 @@ New-Item -ItemType Directory -Force -Path $resolvedOutput | Out-Null
     '-p:EnableCompressionInSingleFile=true' `
     '-p:DebugType=embedded' `
     '-p:DebugSymbols=false' `
+    "-p:Version=$Version" `
+    "-p:AssemblyVersion=${Version}.0" `
+    "-p:FileVersion=${Version}.0" `
+    "-p:InformationalVersion=$Version" `
     -o $resolvedOutput `
     '-m:1'
 
