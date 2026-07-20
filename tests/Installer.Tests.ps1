@@ -46,6 +46,28 @@ function Assert-Contains {
     $script:failures++
 }
 
+function Assert-NotContains {
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyString()]
+        [string]$Content,
+
+        [Parameter(Mandatory)]
+        [string]$Unexpected,
+
+        [Parameter(Mandatory)]
+        [string]$Name
+    )
+
+    if (-not $Content.Contains($Unexpected, [StringComparison]::Ordinal)) {
+        Write-Host "[PASS] $Name" -ForegroundColor Green
+        return
+    }
+
+    Write-Host "[FAIL] $Name，不应包含：$Unexpected" -ForegroundColor Red
+    $script:failures++
+}
+
 function Assert-True {
     param(
         [Parameter(Mandatory)]
@@ -129,6 +151,7 @@ Assert-Contains -Content $buildScript -Expected '& (Join-Path $PSScriptRoot "pub
 Assert-Contains -Content $buildScript -Expected '"product-staging"' -Name "产品文件先暂存"
 Assert-Contains -Content $buildScript -Expected '$destinationChecksumPath' -Name "外部目录校验文件最后写入"
 Assert-Contains -Content $buildScript -Expected "Assert-SafeRecursivePath" -Name "打包清理路径安全检查"
+Assert-NotContains -Content $buildScript -Unexpected "Inno Setup 6" -Name "只允许 Inno Setup 7"
 Assert-Contains `
     -Content $publishScript `
     -Expected '$unexpectedRuntimeFiles = @(' `

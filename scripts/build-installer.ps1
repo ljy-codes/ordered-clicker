@@ -68,12 +68,6 @@ function Find-InnoCompiler {
     if (${env:ProgramFiles(x86)}) {
         $candidates.Add((Join-Path ${env:ProgramFiles(x86)} "Inno Setup 7\ISCC.exe"))
     }
-    $candidates.Add((Join-Path $env:LOCALAPPDATA "Programs\Inno Setup 6\ISCC.exe"))
-    $candidates.Add((Join-Path $env:ProgramFiles "Inno Setup 6\ISCC.exe"))
-    if (${env:ProgramFiles(x86)}) {
-        $candidates.Add((Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe"))
-    }
-
     foreach ($candidate in $candidates) {
         if (Test-Path -LiteralPath $candidate -PathType Leaf) {
             return $candidate
