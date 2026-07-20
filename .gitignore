@@ -6,7 +6,10 @@
 **/obj/
 publish/
 build-diagnostic.log
-docs/superpowers/
+docs/superpowers/*
+!docs/superpowers/specs/
+docs/superpowers/specs/*
+!docs/superpowers/specs/2026-07-20-windows-installer-design.md
 
 # 视频教程的本地生成产物。成品通过 GitHub Releases 分发。
 操作指导/*.mp4
