@@ -2,6 +2,7 @@
 .nuget/
 .tools/
 .tmp/
+.worktrees/
 **/bin/
 **/obj/
 publish/
