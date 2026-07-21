@@ -18,3 +18,14 @@ docs/superpowers/specs/*
 操作指导/assets/clips/
 操作指导/assets/有序连点器-无字幕母版.mp4
 操作指导/assets/concat.txt
+
+# 商业授权资料不得进入公共仓库。
+private/
+secrets/
+license-inventory*.csv
+授权码库存*.csv
+*.pfx
+*.key
+.env
+.env.*
+!.env.example
