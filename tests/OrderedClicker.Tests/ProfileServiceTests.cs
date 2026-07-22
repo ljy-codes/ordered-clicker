@@ -17,10 +17,12 @@ internal static class ProfileServiceTests
         var service = new ProfileService(directory.Path);
         var profile = new ClickProfile
         {
-            Version = 1,
+            Version = 2,
             Name = "日报录入方案",
             TotalLoops = 12,
             LoopDelayMs = 345,
+            DefaultClickIntervalMs = 1234,
+            DefaultAfterDelayMs = 5678,
             Points =
             [
                 new ClickPoint
@@ -45,6 +47,8 @@ internal static class ProfileServiceTests
         TestAssert.True(result.Success, $"配置应成功加载：{result.ErrorMessage}");
         TestAssert.Equal("日报录入方案", result.Profile!.Name, "中文方案名应保持不变");
         TestAssert.Equal(12, result.Profile.TotalLoops, "总循环次数应保持不变");
+        TestAssert.Equal(1234, result.Profile.DefaultClickIntervalMs, "全局点击间隔应保持不变");
+        TestAssert.Equal(5678, result.Profile.DefaultAfterDelayMs, "全局点后等待应保持不变");
         TestAssert.Equal(-321, result.Profile.Points[0].X, "负坐标应保持不变");
         TestAssert.Equal((uint)144, result.Profile.Points[0].CapturedDpi, "DPI 应保持不变");
         TestAssert.True(File.Exists(savedPath), "保存后配置文件应存在");

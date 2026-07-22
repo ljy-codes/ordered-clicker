@@ -42,6 +42,11 @@ internal static class Program
                 ProfileValidatorTests.Run();
                 return Task.CompletedTask;
             }),
+            ("PointTimingService", () =>
+            {
+                PointTimingServiceTests.Run();
+                return Task.CompletedTask;
+            }),
             ("ClickExecutionEngine", ClickExecutionEngineTests.RunAsync),
             ("ProfileService", () =>
             {

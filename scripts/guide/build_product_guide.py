@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE_DIR = ROOT / "操作指导"
 SOURCE_HTML = SOURCE_DIR / "有序连点器-操作指导PRD.html"
-TARGET_HTML = ROOT.parent / "连电器产品" / "有序连点器-使用指导.html"
+TARGET_HTML = SOURCE_DIR / "有序连点器-使用说明.html"
 
 
 def inline_image(match: re.Match[str]) -> str:

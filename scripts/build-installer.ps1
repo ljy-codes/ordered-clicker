@@ -1,7 +1,7 @@
 ﻿[CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = "1.0.1",
+    [string]$Version = "1.1.0",
 
     [string]$ProductDirectory = "",
 
@@ -116,8 +116,8 @@ else {
 }
 
 $guideMappings = [ordered]@{
-    "有序连点器-操作指导PRD.pdf" = "有序连点器-使用说明.pdf"
-    "有序连点器-操作指导PRD.html" = "有序连点器-使用说明.html"
+    "有序连点器-使用说明.pdf" = "有序连点器-使用说明.pdf"
+    "有序连点器-使用说明.html" = "有序连点器-使用说明.html"
     "有序连点器-完整操作教程.mp4" = "有序连点器-视频演示.mp4"
 }
 $resolvedGuideFiles = [System.Collections.Generic.List[object]]::new()

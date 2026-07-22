@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import re
 import subprocess
 import sys
@@ -28,10 +29,17 @@ def require_file(path: Path, minimum_size: int = 1) -> None:
 def verify_local_links(html_path: Path) -> None:
     html = html_path.read_text(encoding="utf-8")
     for raw in re.findall(r"""(?:src|href)=["']([^"']+)["']""", html):
-        if raw.startswith(("#", "http://", "https://", "mailto:", "javascript:")):
+        if raw.startswith(
+            ("#", "http://", "https://", "mailto:", "javascript:", "data:")
+        ):
             continue
         clean = unquote(raw.split("#", 1)[0].split("?", 1)[0])
         if not clean:
+            continue
+        if (
+            clean == "有序连点器-视频演示.mp4"
+            and (html_path.parent / "有序连点器-完整操作教程.mp4").is_file()
+        ):
             continue
         target = (html_path.parent / clean).resolve()
         if not target.exists():
@@ -162,10 +170,10 @@ def verify_video(path: Path) -> tuple[float, str, float]:
     return duration, "H.264 1920x1080 + AAC", mean_volume
 
 
-def main() -> int:
+def main(skip_video: bool = False) -> int:
     required = {
-        "PRD HTML": (GUIDE_DIR / "有序连点器-操作指导PRD.html", 30_000),
-        "PRD PDF": (GUIDE_DIR / "有序连点器-操作指导PRD.pdf", 100_000),
+        "使用说明 HTML": (GUIDE_DIR / "有序连点器-使用说明.html", 100_000),
+        "使用说明 PDF": (GUIDE_DIR / "有序连点器-使用说明.pdf", 100_000),
         "完整视频": (GUIDE_DIR / "有序连点器-完整操作教程.mp4", 5_000_000),
         "字幕": (GUIDE_DIR / "有序连点器-视频字幕.srt", 5_000),
         "旁白稿": (GUIDE_DIR / "有序连点器-旁白稿.md", 3_000),
@@ -176,13 +184,15 @@ def main() -> int:
     for _, (path, size) in required.items():
         require_file(path, size)
 
-    prd_html = required["PRD HTML"][0]
+    prd_html = required["使用说明 HTML"][0]
     prd_text = prd_html.read_text(encoding="utf-8")
     prd_terms = [
         "采点模式",
         "点击次数",
         "点击间隔",
         "点后等待",
+        "应用全部",
+        "新采集点",
         "总循环次数",
         "F8",
         "F9",
@@ -197,11 +207,20 @@ def main() -> int:
     verify_local_links(prd_html)
     verify_local_links(required["演示靶场"][0])
 
-    pdf_reader = PdfReader(str(required["PRD PDF"][0]))
+    pdf_reader = PdfReader(str(required["使用说明 PDF"][0]))
     if len(pdf_reader.pages) < 15:
         fail(f"PDF 页数不足: {len(pdf_reader.pages)}")
     pdf_text = "\n".join(page.extract_text() or "" for page in pdf_reader.pages)
-    for term in ("采点模式", "点击次数", "F8", "F9", "F10", "重新采点"):
+    for term in (
+        "采点模式",
+        "点击次数",
+        "应用全部",
+        "新采集点",
+        "F8",
+        "F9",
+        "F10",
+        "重新采点",
+    ):
         if term not in pdf_text:
             fail(f"PDF 缺少关键内容: {term}")
 
@@ -221,20 +240,35 @@ def main() -> int:
         if actual != expected:
             fail(f"{folder.name}/{pattern} 数量错误: {actual}, 预期 {expected}")
 
-    duration, media, mean_volume = verify_video(required["完整视频"][0])
+    if skip_video:
+        duration = None
+        media = None
+        mean_volume = None
+    else:
+        duration, media, mean_volume = verify_video(required["完整视频"][0])
 
     print("操作指导交付校验通过")
     print(f"- 必需交付文件: {len(required)} 项")
     print(f"- PDF: {len(pdf_reader.pages)} 页")
     print(f"- 字幕: {subtitle_count} 条，结束于 {subtitle_end:.3f}s")
-    print(f"- 视频: {duration:.2f}s，{media}，平均响度 {mean_volume:.1f} dB")
+    if skip_video:
+        print("- 视频: 文件存在，本次未重复执行媒体解码校验")
+    else:
+        print(f"- 视频: {duration:.2f}s，{media}，平均响度 {mean_volume:.1f} dB")
     print("- 章节素材: 14 张场景图、14 段语音、14 个视频片段")
     return 0
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--skip-video",
+        action="store_true",
+        help="跳过未修改视频的 FFmpeg 解码和响度检查",
+    )
+    arguments = parser.parse_args()
     try:
-        raise SystemExit(main())
+        raise SystemExit(main(skip_video=arguments.skip_video))
     except AssertionError as error:
         print(f"校验失败: {error}", file=sys.stderr)
         raise SystemExit(1)

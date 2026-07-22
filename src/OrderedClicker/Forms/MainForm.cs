@@ -33,6 +33,8 @@ public sealed partial class MainForm : Form
     private readonly TextBox _profileNameTextBox = new();
     private readonly NumericUpDown _totalLoopsInput = new();
     private readonly NumericUpDown _loopDelayInput = new();
+    private readonly NumericUpDown _defaultClickIntervalInput = new();
+    private readonly NumericUpDown _defaultAfterDelayInput = new();
     private readonly DataGridView _pointGrid = new();
     private readonly BindingSource _pointBindingSource = new();
     private readonly Button _captureButton = new();
@@ -44,6 +46,8 @@ public sealed partial class MainForm : Form
     private readonly Button _usageHelpButton = new();
     private readonly Button _saveButton = new();
     private readonly Button _loadButton = new();
+    private readonly Button _applyClickIntervalButton = new();
+    private readonly Button _applyAfterDelayButton = new();
     private readonly Button _startPauseButton = new();
     private readonly Button _stopButton = new();
     private readonly ToolStripStatusLabel _stateStatusLabel = new();
@@ -138,21 +142,23 @@ public sealed partial class MainForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 5,
+            RowCount = 6,
             Padding = new Padding(12),
             BackColor = _theme.Window
         };
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 68));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
 
         root.Controls.Add(BuildProfilePanel(), 0, 0);
-        root.Controls.Add(_pointGrid, 0, 1);
-        root.Controls.Add(BuildPointToolbar(), 0, 2);
-        root.Controls.Add(BuildExecutionPanel(), 0, 3);
-        root.Controls.Add(BuildStatusStrip(), 0, 4);
+        root.Controls.Add(BuildTimingPanel(), 0, 1);
+        root.Controls.Add(_pointGrid, 0, 2);
+        root.Controls.Add(BuildPointToolbar(), 0, 3);
+        root.Controls.Add(BuildExecutionPanel(), 0, 4);
+        root.Controls.Add(BuildStatusStrip(), 0, 5);
         Controls.Add(root);
     }
 
@@ -198,6 +204,56 @@ public sealed partial class MainForm : Form
         panel.Controls.Add(CreateSpacer(18));
         panel.Controls.Add(_saveButton);
         panel.Controls.Add(_loadButton);
+        return panel;
+    }
+
+    private Control BuildTimingPanel()
+    {
+        var panel = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            Padding = new Padding(0, 7, 0, 7),
+            BackColor = _theme.Window
+        };
+
+        _defaultClickIntervalInput.Name = "DefaultClickIntervalInput";
+        _defaultClickIntervalInput.Minimum = 10;
+        _defaultClickIntervalInput.Maximum = 600000;
+        _defaultClickIntervalInput.Increment = 100;
+        _defaultClickIntervalInput.Value = 100;
+        _defaultClickIntervalInput.Width = 110;
+        ConfigureInput(_defaultClickIntervalInput);
+
+        _defaultAfterDelayInput.Name = "DefaultAfterDelayInput";
+        _defaultAfterDelayInput.Minimum = 0;
+        _defaultAfterDelayInput.Maximum = 600000;
+        _defaultAfterDelayInput.Increment = 100;
+        _defaultAfterDelayInput.Value = 500;
+        _defaultAfterDelayInput.Width = 110;
+        ConfigureInput(_defaultAfterDelayInput);
+
+        _applyClickIntervalButton.Name = "ApplyClickIntervalButton";
+        _applyClickIntervalButton.Text = "应用全部";
+        _applyAfterDelayButton.Name = "ApplyAfterDelayButton";
+        _applyAfterDelayButton.Text = "应用全部";
+        ConfigureCommandButton(_applyClickIntervalButton, 94);
+        ConfigureCommandButton(_applyAfterDelayButton, 94);
+
+        var sectionLabel = CreateFieldLabel("点位时间");
+        sectionLabel.Font = new Font(Font, FontStyle.Bold);
+        sectionLabel.ForeColor = _theme.Text;
+
+        panel.Controls.Add(sectionLabel);
+        panel.Controls.Add(CreateSpacer(10));
+        panel.Controls.Add(CreateFieldLabel("点击间隔(ms)"));
+        panel.Controls.Add(_defaultClickIntervalInput);
+        panel.Controls.Add(_applyClickIntervalButton);
+        panel.Controls.Add(CreateSpacer(22));
+        panel.Controls.Add(CreateFieldLabel("点后等待(ms)"));
+        panel.Controls.Add(_defaultAfterDelayInput);
+        panel.Controls.Add(_applyAfterDelayButton);
         return panel;
     }
 
@@ -360,6 +416,18 @@ public sealed partial class MainForm : Form
         _toolTip.SetToolTip(_deleteButton, "删除当前选中的点位。");
         _toolTip.SetToolTip(_themeSettingsButton, "选择并保存界面主题。");
         _toolTip.SetToolTip(_usageHelpButton, "查看连点器操作说明。");
+        _toolTip.SetToolTip(
+            _defaultClickIntervalInput,
+            "后续新采集点默认使用的点击间隔。");
+        _toolTip.SetToolTip(
+            _applyClickIntervalButton,
+            "将当前点击间隔应用到全部已有点位。");
+        _toolTip.SetToolTip(
+            _defaultAfterDelayInput,
+            "后续新采集点默认使用的点后等待。");
+        _toolTip.SetToolTip(
+            _applyAfterDelayButton,
+            "将当前点后等待应用到全部已有点位。");
         _toolTip.SetToolTip(_startPauseButton, "开始、暂停或继续执行。");
         _toolTip.SetToolTip(_stopButton, "立即停止倒计时、等待或点击任务。");
         _captureButton.Click += (_, _) => ToggleCaptureMode();
@@ -371,6 +439,8 @@ public sealed partial class MainForm : Form
         _loadButton.Click += (_, _) => LoadProfile();
         _themeSettingsButton.Click += (_, _) => ShowThemeSettings();
         _usageHelpButton.Click += (_, _) => ShowUsageHelp();
+        _applyClickIntervalButton.Click += (_, _) => ApplyClickIntervalToAll();
+        _applyAfterDelayButton.Click += (_, _) => ApplyAfterDelayToAll();
         _startPauseButton.Click += async (_, _) => await HandleStartPauseAsync();
         _stopButton.Click += (_, _) => StopExecution();
         _pointGrid.CellFormatting += PointGridOnCellFormatting;
@@ -466,6 +536,8 @@ public sealed partial class MainForm : Form
         ApplyNeutralButtonTheme(_clearButton);
         ApplyNeutralButtonTheme(_themeSettingsButton);
         ApplyNeutralButtonTheme(_usageHelpButton);
+        ApplyNeutralButtonTheme(_applyClickIntervalButton);
+        ApplyNeutralButtonTheme(_applyAfterDelayButton);
         ApplyNeutralButtonTheme(_stopButton);
 
         ApplyAccentButtonTheme(_saveButton, theme.Primary);
@@ -476,6 +548,8 @@ public sealed partial class MainForm : Form
         ApplyAccentButtonTheme(_clearButton, theme.WarningAccent);
         ApplyAccentButtonTheme(_themeSettingsButton, theme.SettingsAccent);
         ApplyAccentButtonTheme(_usageHelpButton, theme.HelpAccent);
+        ApplyAccentButtonTheme(_applyClickIntervalButton, theme.Primary);
+        ApplyAccentButtonTheme(_applyAfterDelayButton, theme.HelpAccent);
         ApplyAccentButtonTheme(_stopButton, theme.DangerAccent);
         ApplyPrimaryButtonTheme(_startPauseButton);
         UpdateCaptureButton();
@@ -575,6 +649,10 @@ public sealed partial class MainForm : Form
                 MonitorBounds = captured.MonitorBounds,
                 CapturedDpi = captured.Dpi
             };
+            PointTimingService.ApplyDefaults(
+                point,
+                decimal.ToInt32(_defaultClickIntervalInput.Value),
+                decimal.ToInt32(_defaultAfterDelayInput.Value));
             _points.Add(point);
             SelectPoint(_points.Count - 1);
             SetStatus($"已记录点位 {_points.Count}：({point.X}, {point.Y})。");
@@ -636,6 +714,30 @@ public sealed partial class MainForm : Form
         }
     }
 
+    private void ApplyClickIntervalToAll()
+    {
+        CommitGridChanges();
+        var value = decimal.ToInt32(_defaultClickIntervalInput.Value);
+        PointTimingService.ApplyClickInterval(_points, value);
+        _pointGrid.Refresh();
+        SetStatus(
+            _points.Count == 0
+                ? $"新采集点的点击间隔已设为 {value} ms。"
+                : $"已将 {_points.Count} 个点位的点击间隔设为 {value} ms。");
+    }
+
+    private void ApplyAfterDelayToAll()
+    {
+        CommitGridChanges();
+        var value = decimal.ToInt32(_defaultAfterDelayInput.Value);
+        PointTimingService.ApplyAfterDelay(_points, value);
+        _pointGrid.Refresh();
+        SetStatus(
+            _points.Count == 0
+                ? $"新采集点的点后等待已设为 {value} ms。"
+                : $"已将 {_points.Count} 个点位的点后等待设为 {value} ms。");
+    }
+
     private void SaveProfile()
     {
         try
@@ -681,12 +783,14 @@ public sealed partial class MainForm : Form
         CommitGridChanges();
         return new ClickProfile
         {
-            Version = 1,
+            Version = 2,
             Name = string.IsNullOrWhiteSpace(_profileNameTextBox.Text)
                 ? "默认方案"
                 : _profileNameTextBox.Text.Trim(),
             TotalLoops = decimal.ToInt32(_totalLoopsInput.Value),
             LoopDelayMs = decimal.ToInt32(_loopDelayInput.Value),
+            DefaultClickIntervalMs = decimal.ToInt32(_defaultClickIntervalInput.Value),
+            DefaultAfterDelayMs = decimal.ToInt32(_defaultAfterDelayInput.Value),
             Points = _points.Select(ClonePoint).ToList()
         };
     }
@@ -696,6 +800,15 @@ public sealed partial class MainForm : Form
         _profileNameTextBox.Text = profile.Name;
         _totalLoopsInput.Value = Math.Clamp(profile.TotalLoops, 1, 100000);
         _loopDelayInput.Value = Math.Clamp(profile.LoopDelayMs, 0, 600000);
+        var defaults = PointTimingService.ResolveDefaults(profile);
+        _defaultClickIntervalInput.Value = Math.Clamp(
+            defaults.ClickIntervalMs,
+            decimal.ToInt32(_defaultClickIntervalInput.Minimum),
+            decimal.ToInt32(_defaultClickIntervalInput.Maximum));
+        _defaultAfterDelayInput.Value = Math.Clamp(
+            defaults.AfterDelayMs,
+            decimal.ToInt32(_defaultAfterDelayInput.Minimum),
+            decimal.ToInt32(_defaultAfterDelayInput.Maximum));
         _points = new BindingList<ClickPoint>(profile.Points.Select(ClonePoint).ToList());
         _pointBindingSource.DataSource = _points;
         _pointGrid.Refresh();

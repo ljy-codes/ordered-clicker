@@ -16,6 +16,8 @@ internal static class UiSmokeTests
         AssertDarkTheme(form);
         AssertUsageHelpEntry(form);
         AssertThemeSettingsEntry(form);
+        AssertGlobalTimingControls(form);
+        AssertGlobalTimingApplication(form);
         AssertThemeSettingsDialog(form);
         AssertConfiguredThemeLoads();
         AssertThemePreviewCancelAndSave();
@@ -226,6 +228,86 @@ internal static class UiSmokeTests
             "使用说明按钮应排列在主题设置按钮右侧");
     }
 
+    private static void AssertGlobalTimingControls(MainForm form)
+    {
+        var controls = EnumerateControls(form).ToList();
+        var intervalInput = controls
+            .OfType<NumericUpDown>()
+            .SingleOrDefault(control => control.Name == "DefaultClickIntervalInput");
+        var intervalButton = controls
+            .OfType<Button>()
+            .SingleOrDefault(control => control.Name == "ApplyClickIntervalButton");
+        var afterDelayInput = controls
+            .OfType<NumericUpDown>()
+            .SingleOrDefault(control => control.Name == "DefaultAfterDelayInput");
+        var afterDelayButton = controls
+            .OfType<Button>()
+            .SingleOrDefault(control => control.Name == "ApplyAfterDelayButton");
+
+        TestAssert.True(intervalInput is not null, "主窗体应包含全局点击间隔输入框");
+        TestAssert.True(intervalButton is not null, "主窗体应包含点击间隔应用全部按钮");
+        TestAssert.True(afterDelayInput is not null, "主窗体应包含全局点后等待输入框");
+        TestAssert.True(afterDelayButton is not null, "主窗体应包含点后等待应用全部按钮");
+        TestAssert.Equal(10m, intervalInput!.Minimum, "全局点击间隔最小值应与点位校验一致");
+        TestAssert.Equal(600000m, intervalInput.Maximum, "全局点击间隔最大值应与点位校验一致");
+        TestAssert.Equal(0m, afterDelayInput!.Minimum, "全局点后等待最小值应与点位校验一致");
+        TestAssert.Equal(600000m, afterDelayInput.Maximum, "全局点后等待最大值应与点位校验一致");
+    }
+
+    private static void AssertGlobalTimingApplication(MainForm form)
+    {
+        ApplyProfile(
+            form,
+            new ClickProfile
+            {
+                Version = 2,
+                DefaultClickIntervalMs = 100,
+                DefaultAfterDelayMs = 500,
+                Points =
+                [
+                    new ClickPoint { ClickIntervalMs = 100, AfterDelayMs = 500 },
+                    new ClickPoint { ClickIntervalMs = 200, AfterDelayMs = 800 }
+                ]
+            });
+
+        var controls = EnumerateControls(form).ToList();
+        var intervalInput = controls
+            .OfType<NumericUpDown>()
+            .Single(control => control.Name == "DefaultClickIntervalInput");
+        var intervalButton = controls
+            .OfType<Button>()
+            .Single(control => control.Name == "ApplyClickIntervalButton");
+        var afterDelayInput = controls
+            .OfType<NumericUpDown>()
+            .Single(control => control.Name == "DefaultAfterDelayInput");
+        var afterDelayButton = controls
+            .OfType<Button>()
+            .Single(control => control.Name == "ApplyAfterDelayButton");
+
+        intervalInput.Value = 1000;
+        intervalButton.PerformClick();
+        var points = GetPoints(form);
+        TestAssert.True(
+            points.All(point => point.ClickIntervalMs == 1000),
+            "点击间隔应用全部应更新所有点位");
+        TestAssert.Equal(500, points[0].AfterDelayMs, "点击间隔应用全部不应覆盖单点点后等待");
+        TestAssert.Equal(800, points[1].AfterDelayMs, "点击间隔应用全部不应覆盖其他点后等待");
+
+        afterDelayInput.Value = 750;
+        afterDelayButton.PerformClick();
+        TestAssert.True(
+            points.All(point => point.AfterDelayMs == 750),
+            "点后等待应用全部应更新所有点位");
+        TestAssert.True(
+            points.All(point => point.ClickIntervalMs == 1000),
+            "点后等待应用全部不应覆盖点击间隔");
+
+        points[0].ClickIntervalMs = 200;
+        TestAssert.Equal(200, points[0].ClickIntervalMs, "单点仍应允许覆盖全局点击间隔");
+        TestAssert.Equal(1000, points[1].ClickIntervalMs, "单点覆盖不应影响其他点位");
+        TestAssert.Equal(1000m, intervalInput.Value, "单点覆盖不应反向修改全局默认值");
+    }
+
     private static void AssertThemeSettingsDialog(MainForm form)
     {
         var settingsButton = EnumerateControls(form)
@@ -391,6 +473,9 @@ internal static class UiSmokeTests
         TestAssert.True(
             dialogText.Contains("缩放") && dialogText.Contains("重新采点"),
             "使用说明应包含屏幕缩放注意事项");
+        TestAssert.True(
+            dialogText.Contains("应用全部") && dialogText.Contains("新采集点"),
+            "使用说明应包含全局时间设置和新点继承说明");
         TestAssert.True(dialogUsesCurrentTheme, "使用说明弹窗应使用当前主题");
     }
 
@@ -409,6 +494,23 @@ internal static class UiSmokeTests
             "OnClick",
             BindingFlags.Instance | BindingFlags.NonPublic);
         method!.Invoke(control, [EventArgs.Empty]);
+    }
+
+    private static void ApplyProfile(MainForm form, ClickProfile profile)
+    {
+        var method = typeof(MainForm).GetMethod(
+            "ApplyProfile",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        method!.Invoke(form, [profile]);
+        Application.DoEvents();
+    }
+
+    private static IReadOnlyList<ClickPoint> GetPoints(MainForm form)
+    {
+        var field = typeof(MainForm).GetField(
+            "_points",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        return ((System.ComponentModel.BindingList<ClickPoint>)field!.GetValue(form)!).ToList();
     }
 
     private static void RenderDialog(

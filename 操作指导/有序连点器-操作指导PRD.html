@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>有序连点器操作指导 PRD</title>
+  <title>有序连点器使用说明</title>
   <style>
     :root {
       color-scheme: dark;
@@ -857,7 +857,7 @@
   <aside class="sidebar">
     <div class="brand">
       <strong>有序连点器</strong>
-      <span>零基础操作指导 PRD</span>
+      <span>零基础功能使用指导</span>
     </div>
     <nav aria-label="文档章节">
       <a href="#overview">01 产品概览</a>
@@ -886,14 +886,14 @@
         <div class="doc-meta">
           <span class="meta-tag">适用系统：Windows 10/11 x64</span>
           <span class="meta-tag">目标用户：零基础普通用户</span>
-          <span class="meta-tag">更新日期：2026-07-17</span>
+          <span class="meta-tag">更新日期：2026-07-22</span>
         </div>
       </div>
     </header>
 
     <main>
       <article class="intro">
-        <div class="eyebrow">操作指导 PRD · 极光科技深色模式</div>
+        <div class="eyebrow">功能使用指导 · 极光科技深色模式</div>
         <h1>从第一次启动，到完成多点循环点击</h1>
         <p class="lead">
           本指导不要求你理解编程或坐标原理。按照步骤操作，你可以依次记录多个点击位置，
@@ -963,6 +963,11 @@
                 <td>一个位置点击两次，另一个位置只点击一次。</td>
               </tr>
               <tr>
+                <td>批量时间设置</td>
+                <td>点击间隔和点后等待可以分别“应用全部”，再对特殊点位单独修改。</td>
+                <td>先统一设置大多数点，再为个别点增加或缩短等待。</td>
+              </tr>
+              <tr>
                 <td>总循环次数</td>
                 <td>全部点位执行完一遍算一轮，可以重复多轮。</td>
                 <td>将同一组操作重复 2 次、10 次或更多次。</td>
@@ -1029,7 +1034,7 @@
           <span class="section-number">03</span>
           <div>
             <h2>界面认识</h2>
-            <p>主界面从上到下分为方案区、点位表、点位工具栏、执行区和状态栏。</p>
+            <p>主界面从上到下分为方案区、点位时间区、点位表、点位工具栏、执行区和状态栏。</p>
           </div>
         </div>
 
@@ -1055,15 +1060,19 @@
             <p>上一轮全部结束后，到下一轮开始前的等待时间，单位为毫秒。</p>
           </div>
           <div class="interface-item">
-            <h4><span class="marker">4</span>点位表格</h4>
+            <h4><span class="marker">4</span>点位时间</h4>
+            <p>分别设置全局点击间隔和点后等待；点击对应“应用全部”只批量修改该列。</p>
+          </div>
+          <div class="interface-item">
+            <h4><span class="marker">5</span>点位表格</h4>
             <p>显示点位顺序、坐标、点击次数、间隔、点后等待和所属显示器。</p>
           </div>
           <div class="interface-item">
-            <h4><span class="marker">5</span>点位操作栏</h4>
+            <h4><span class="marker">6</span>点位操作栏</h4>
             <p>用于采点、调整顺序、删除、清空、设置主题和打开使用说明。</p>
           </div>
           <div class="interface-item">
-            <h4><span class="marker">6</span>执行与状态</h4>
+            <h4><span class="marker">7</span>执行与状态</h4>
             <p>开始、暂停、停止任务，并显示当前循环、点位和点击进度。</p>
           </div>
         </div>
@@ -1177,13 +1186,13 @@
           <article class="step">
             <div class="step-index">6</div>
             <div class="step-body">
-              <h3>设置三个点位的参数</h3>
+              <h3>批量设置时间，再调整单点参数</h3>
               <div class="step-fields">
-                <div class="step-field"><strong>操作目的</strong><span>让三个按钮以不同次数和间隔点击。</span></div>
-                <div class="step-field"><strong>操作位置</strong><span>点击次数、点击间隔、点后等待三列。</span></div>
-                <div class="step-field"><strong>操作步骤</strong><span>蓝色填 2/500/800，青色填 1/0/600，紫色填 3/300/1000。</span></div>
+                <div class="step-field"><strong>操作目的</strong><span>快速统一三个点的时间，再为特殊点位设置例外。</span></div>
+                <div class="step-field"><strong>操作位置</strong><span>“点位时间”栏、两个“应用全部”按钮和点位表格。</span></div>
+                <div class="step-field"><strong>操作步骤</strong><span>点击间隔填 500 并应用全部，点后等待填 800 并应用全部；再将青色点后等待改为 600，紫色改为 3/300/1000，蓝色点击次数改为 2。</span></div>
                 <div class="step-field"><strong>正确结果</strong><span>表格中的九个参数与示例表一致。</span></div>
-                <div class="step-field"><strong>注意事项</strong><span>所有时间单位都是毫秒，1000 毫秒等于 1 秒。</span></div>
+                <div class="step-field"><strong>注意事项</strong><span>“应用全部”只修改对应时间列；单行修改只对该点生效。所有时间单位都是毫秒。</span></div>
                 <div class="step-field"><strong>常见错误</strong><span>把 1 秒误填为 1，而不是 1000。</span></div>
               </div>
             </div>
@@ -1315,6 +1324,18 @@
             <h4>启用状态</h4>
             <p>取消勾选后暂时跳过该点位，但保留坐标和参数。适合临时测试部分步骤。</p>
           </article>
+          <article class="parameter">
+            <h4>全局时间 <span class="unit">批量</span></h4>
+            <p>在“点位时间”栏输入数值并点击对应“应用全部”，会统一修改所有点的点击间隔或点后等待。</p>
+          </article>
+          <article class="parameter">
+            <h4>单行覆盖 <span class="unit">例外</span></h4>
+            <p>批量设置后可以直接修改任意一行。该修改只对当前点生效，不会影响其他点或全局默认值。</p>
+          </article>
+          <article class="parameter">
+            <h4>新采集点 <span class="unit">继承</span></h4>
+            <p>新采集点自动继承“点位时间”栏中的当前数值，适合先设定默认时间再连续采集多个点。</p>
+          </article>
         </div>
 
         <h3>示例参数与结果</h3>
@@ -1330,7 +1351,7 @@
           </thead>
           <tbody>
             <tr><td>蓝色按钮</td><td>2</td><td>500 ms</td><td>800 ms</td><td>4</td></tr>
-            <tr><td>青色按钮</td><td>1</td><td>0 ms</td><td>600 ms</td><td>2</td></tr>
+            <tr><td>青色按钮</td><td>1</td><td>500 ms</td><td>600 ms</td><td>2</td></tr>
             <tr><td>紫色按钮</td><td>3</td><td>300 ms</td><td>1000 ms</td><td>6</td></tr>
           </tbody>
         </table>
@@ -1392,7 +1413,7 @@
           <p>
             点击顶部“保存”后，程序会将方案写入
             <code>%LocalAppData%\OrderedClicker\profiles</code>。
-            文件为 JSON 格式，包含点位顺序、坐标、单点参数、循环参数和显示器信息。
+            文件为 JSON 格式，包含点位顺序、坐标、单点参数、全局时间默认值、循环参数和显示器信息。
           </p>
         </div>
         <div class="panel">
@@ -1602,7 +1623,7 @@
       </section>
 
       <div class="footer-note">
-        文档版本：1.0 · 更新日期：2026-07-17 ·
+        文档版本：1.1 · 更新日期：2026-07-22 ·
         本文档只提供软件操作说明，不建议将自动点击用于高风险或不可撤销操作。
       </div>
     </main>

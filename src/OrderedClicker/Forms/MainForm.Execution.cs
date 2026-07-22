@@ -159,6 +159,8 @@ public sealed partial class MainForm
         _profileNameTextBox.Enabled = enabled;
         _totalLoopsInput.Enabled = enabled;
         _loopDelayInput.Enabled = enabled;
+        _defaultClickIntervalInput.Enabled = enabled;
+        _defaultAfterDelayInput.Enabled = enabled;
         _pointGrid.Enabled = enabled;
         _captureButton.Enabled = enabled;
         _moveUpButton.Enabled = enabled;
@@ -167,5 +169,7 @@ public sealed partial class MainForm
         _clearButton.Enabled = enabled;
         _saveButton.Enabled = enabled;
         _loadButton.Enabled = enabled;
+        _applyClickIntervalButton.Enabled = enabled;
+        _applyAfterDelayButton.Enabled = enabled;
     }
 }
