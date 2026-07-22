@@ -50,17 +50,22 @@ public sealed partial class MainForm : Form
     private readonly Button _applyAfterDelayButton = new();
     private readonly Button _startPauseButton = new();
     private readonly Button _stopButton = new();
+    private readonly Label _executionHintLabel = new();
     private readonly ToolStripStatusLabel _stateStatusLabel = new();
     private readonly ToolStripStatusLabel _progressStatusLabel = new();
     private readonly ToolStripStatusLabel _hotKeyStatusLabel = new();
     private readonly StatusStrip _statusStrip = new();
 
     private BindingList<ClickPoint> _points = [];
+    private readonly Dictionary<int, HotKeyRegistration> _activeHotKeyRegistrations = [];
+    private AppSettings _settings;
     private AppTheme _theme;
-    private HotKeyService? _hotKeyService;
+    private HotKeyRegistrationCoordinator? _hotKeyCoordinator;
     private CancellationTokenSource? _executionCancellation;
     private ExecutionState _executionState = ExecutionState.Idle;
     private bool _captureMode;
+    private bool _suspendHotKeyActions;
+    private bool _activeHotKeysKnown;
 
     public MainForm(
         bool enableGlobalHotKeys = true,
@@ -68,7 +73,8 @@ public sealed partial class MainForm : Form
     {
         _enableGlobalHotKeys = enableGlobalHotKeys;
         _settingsService = settingsService ?? new SettingsService();
-        _theme = AppThemeCatalog.Get(_settingsService.Load().Theme);
+        _settings = _settingsService.Load();
+        _theme = AppThemeCatalog.Get(_settings.Theme);
         InitializeWindow();
         BuildLayout();
         ConfigurePointGrid();
@@ -76,6 +82,7 @@ public sealed partial class MainForm : Form
         ApplyProfile(new ClickProfile());
         UpdateCaptureButton();
         SetExecutionState(ExecutionState.Idle);
+        UpdateHotKeyText();
         ApplyTheme(_theme);
     }
 
@@ -98,6 +105,11 @@ public sealed partial class MainForm : Form
     {
         if (message.Msg == NativeMethods.WmHotKey)
         {
+            if (_suspendHotKeyActions)
+            {
+                return;
+            }
+
             switch (message.WParam.ToInt32())
             {
                 case CaptureHotKeyId:
@@ -119,7 +131,7 @@ public sealed partial class MainForm : Form
     {
         _executionCancellation?.Cancel();
         _pauseGate.Resume();
-        _hotKeyService?.Dispose();
+        _hotKeyCoordinator?.Dispose();
         _toolTip.Dispose();
         base.OnFormClosing(e);
     }
@@ -268,7 +280,7 @@ public sealed partial class MainForm : Form
             BackColor = _theme.Window
         };
 
-        ConfigureCommandButton(_captureButton, 138);
+        ConfigureCommandButton(_captureButton, 190);
         _moveUpButton.Text = "↑ 上移";
         _moveDownButton.Text = "↓ 下移";
         _deleteButton.Text = "删除";
@@ -289,7 +301,7 @@ public sealed partial class MainForm : Form
         panel.Controls.Add(_moveDownButton);
         panel.Controls.Add(_deleteButton);
         panel.Controls.Add(_clearButton);
-        panel.Controls.Add(CreateSpacer(112));
+        panel.Controls.Add(CreateSpacer(28));
         panel.Controls.Add(_themeSettingsButton);
         panel.Controls.Add(_usageHelpButton);
         return panel;
@@ -306,23 +318,17 @@ public sealed partial class MainForm : Form
             BackColor = _theme.Window
         };
 
-        _startPauseButton.Text = "开始 (F9)";
-        _stopButton.Text = "停止 (F10)";
-        ConfigurePrimaryButton(_startPauseButton, 142);
-        ConfigureCommandButton(_stopButton, 126);
+        ConfigurePrimaryButton(_startPauseButton, 190);
+        ConfigureCommandButton(_stopButton, 186);
 
-        var hint = new Label
-        {
-            AutoSize = true,
-            Margin = new Padding(18, 10, 0, 0),
-            ForeColor = _theme.MutedText,
-            BackColor = _theme.Window,
-            Text = "运行前有 3 秒倒计时；F10 可随时停止"
-        };
+        _executionHintLabel.AutoSize = true;
+        _executionHintLabel.Margin = new Padding(18, 10, 0, 0);
+        _executionHintLabel.ForeColor = _theme.MutedText;
+        _executionHintLabel.BackColor = _theme.Window;
 
         panel.Controls.Add(_startPauseButton);
         panel.Controls.Add(_stopButton);
-        panel.Controls.Add(hint);
+        panel.Controls.Add(_executionHintLabel);
         return panel;
     }
 
@@ -340,7 +346,6 @@ public sealed partial class MainForm : Form
         _progressStatusLabel.Spring = true;
         _progressStatusLabel.TextAlign = ContentAlignment.MiddleLeft;
         _progressStatusLabel.ForeColor = _theme.MutedText;
-        _hotKeyStatusLabel.Text = "F8 采点 | F9 开始/暂停 | F10 停止";
         _hotKeyStatusLabel.ForeColor = _theme.Text;
         _statusStrip.Items.Add(_stateStatusLabel);
         _statusStrip.Items.Add(new ToolStripSeparator());
@@ -410,11 +415,10 @@ public sealed partial class MainForm : Form
 
     private void WireEvents()
     {
-        _toolTip.SetToolTip(_captureButton, "开启后，将鼠标移动到目标位置并按 F8 记录坐标。");
         _toolTip.SetToolTip(_moveUpButton, "将选中点位提前一个执行顺序。");
         _toolTip.SetToolTip(_moveDownButton, "将选中点位后移一个执行顺序。");
         _toolTip.SetToolTip(_deleteButton, "删除当前选中的点位。");
-        _toolTip.SetToolTip(_themeSettingsButton, "选择并保存界面主题。");
+        _toolTip.SetToolTip(_themeSettingsButton, "选择界面主题并配置全局快捷键。");
         _toolTip.SetToolTip(_usageHelpButton, "查看连点器操作说明。");
         _toolTip.SetToolTip(
             _defaultClickIntervalInput,
@@ -458,16 +462,15 @@ public sealed partial class MainForm : Form
 
     private void RegisterGlobalHotKeys()
     {
-        _hotKeyService = new HotKeyService(Handle);
-        var failures = new List<string>();
-        TryRegisterHotKey(CaptureHotKeyId, Keys.F8, failures);
-        TryRegisterHotKey(StartPauseHotKeyId, Keys.F9, failures);
-        TryRegisterHotKey(StopHotKeyId, Keys.F10, failures);
-
-        if (failures.Count > 0)
+        _hotKeyCoordinator = new HotKeyRegistrationCoordinator(new HotKeyService(Handle));
+        var result = _hotKeyCoordinator.RegisterInitial(CreateHotKeyRegistrations(_settings));
+        RefreshActiveHotKeyRegistrations();
+        UpdateHotKeyText();
+        if (!result.Success)
         {
             MessageBox.Show(
-                string.Join(Environment.NewLine, failures),
+                $"{result.Message}{Environment.NewLine}{Environment.NewLine}"
+                + "冲突项可在“设置”中修改，界面按钮仍可正常使用。",
                 "全局热键不可用",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
@@ -607,18 +610,6 @@ public sealed partial class MainForm : Form
         }
     }
 
-    private void TryRegisterHotKey(int id, Keys key, ICollection<string> failures)
-    {
-        try
-        {
-            _hotKeyService!.Register(id, key);
-        }
-        catch (Win32Exception exception)
-        {
-            failures.Add(exception.Message);
-        }
-    }
-
     private void ToggleCaptureMode()
     {
         if (_executionState != ExecutionState.Idle)
@@ -628,7 +619,10 @@ public sealed partial class MainForm : Form
 
         _captureMode = !_captureMode;
         UpdateCaptureButton();
-        SetStatus(_captureMode ? "采点模式已开启，将鼠标移到目标位置后按 F8。" : "采点模式已关闭。");
+        SetStatus(
+            _captureMode
+                ? $"采点模式已开启，将鼠标移到目标位置后按 {CaptureHotKeyText}。"
+                : "采点模式已关闭。");
     }
 
     private void CaptureCurrentPoint()
@@ -844,7 +838,8 @@ public sealed partial class MainForm : Form
 
     private void UpdateCaptureButton()
     {
-        _captureButton.Text = _captureMode ? "● 结束采点" : "＋ 采点模式 (F8)";
+        _captureButton.Text =
+            _captureMode ? "● 结束采点" : $"＋ 采点 ({CaptureHotKeyText})";
         _captureButton.BackColor = _captureMode
             ? _theme.AccentPressed(_theme.CaptureAccent)
             : _theme.AccentSurface(_theme.CaptureAccent);
@@ -857,6 +852,67 @@ public sealed partial class MainForm : Form
         _captureButton.FlatAppearance.MouseDownBackColor =
             _theme.AccentPressed(_theme.CaptureAccent);
         _captureButton.ForeColor = _theme.AccentText(_theme.CaptureAccent);
+    }
+
+    private string CaptureHotKeyText =>
+        GetActiveHotKeyText(CaptureHotKeyId, _settings.CaptureHotKey);
+
+    private string StartPauseHotKeyText =>
+        GetActiveHotKeyText(StartPauseHotKeyId, _settings.StartPauseHotKey);
+
+    private string StopHotKeyText =>
+        GetActiveHotKeyText(StopHotKeyId, _settings.StopHotKey);
+
+    private IReadOnlyList<HotKeyRegistration> CreateHotKeyRegistrations(AppSettings settings)
+    {
+        return
+        [
+            new HotKeyRegistration(CaptureHotKeyId, "采点", settings.CaptureHotKey),
+            new HotKeyRegistration(StartPauseHotKeyId, "开始/暂停", settings.StartPauseHotKey),
+            new HotKeyRegistration(StopHotKeyId, "停止", settings.StopHotKey)
+        ];
+    }
+
+    private void UpdateHotKeyText()
+    {
+        UpdateCaptureButton();
+        SetExecutionState(_executionState);
+        _stopButton.Text = $"停止 ({StopHotKeyText})";
+        _executionHintLabel.Text =
+            $"运行前有 3 秒倒计时；{StopHotKeyText} 可随时停止";
+        _hotKeyStatusLabel.Text =
+            $"{CaptureHotKeyText} 采点 | "
+            + $"{StartPauseHotKeyText} 开始/暂停 | "
+            + $"{StopHotKeyText} 停止";
+        _toolTip.SetToolTip(
+            _captureButton,
+            $"开启后，将鼠标移动到目标位置并按 {CaptureHotKeyText} 记录坐标。");
+    }
+
+    private string GetActiveHotKeyText(int id, HotKeyBinding configuredBinding)
+    {
+        if (!_enableGlobalHotKeys || !_activeHotKeysKnown)
+        {
+            return HotKeyBindingService.Format(configuredBinding);
+        }
+
+        return _activeHotKeyRegistrations.TryGetValue(id, out var registration)
+            ? HotKeyBindingService.Format(registration.Binding)
+            : "未注册";
+    }
+
+    private void RefreshActiveHotKeyRegistrations()
+    {
+        _activeHotKeyRegistrations.Clear();
+        if (_hotKeyCoordinator is not null)
+        {
+            foreach (var registration in _hotKeyCoordinator.RegisteredBindings)
+            {
+                _activeHotKeyRegistrations[registration.Id] = registration;
+            }
+        }
+
+        _activeHotKeysKnown = true;
     }
 
     private void SetStatus(string message)

@@ -1,7 +1,7 @@
 ﻿[CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = "1.1.0",
+    [string]$Version = "1.2.0",
 
     [string]$ProductDirectory = "",
 
@@ -221,16 +221,78 @@ $checksumLines = foreach ($file in $stagedProductFiles) {
     [System.Text.UTF8Encoding]::new($false))
 
 New-Item -ItemType Directory -Force -Path $resolvedProductDirectory | Out-Null
-$destinationChecksumPath = Join-Path $resolvedProductDirectory "SHA256SUMS.txt"
-if (Test-Path -LiteralPath $destinationChecksumPath) {
-    Remove-Item -LiteralPath $destinationChecksumPath -Force
-}
+$deliveryStagingDirectory = Join-Path `
+    $resolvedProductDirectory `
+    ".ordered-clicker-staging-$([Guid]::NewGuid().ToString('N'))"
+$safeDeliveryStagingDirectory = Assert-SafeRecursivePath `
+    -Path $deliveryStagingDirectory `
+    -ParentPath $resolvedProductDirectory
+New-Item -ItemType Directory -Force -Path $safeDeliveryStagingDirectory | Out-Null
 
-foreach ($stagedFile in $stagedProductFiles) {
-    $destination = Join-Path $resolvedProductDirectory ([System.IO.Path]::GetFileName($stagedFile))
-    Copy-Item -LiteralPath $stagedFile -Destination $destination -Force
+$ownedProductPatterns = @(
+    "ordered-clicker-setup-v*.exe",
+    "ordered-clicker-portable-v*.zip",
+    "有序连点器-使用说明.pdf",
+    "有序连点器-使用说明.html",
+    "有序连点器-视频演示.mp4",
+    "SHA256SUMS.txt"
+)
+$destinationChecksumPath = Join-Path $resolvedProductDirectory "SHA256SUMS.txt"
+try {
+    $deliveryFiles = [System.Collections.Generic.List[string]]::new()
+    foreach ($stagedFile in $stagedProductFiles) {
+        $destination = Join-Path `
+            $safeDeliveryStagingDirectory `
+            ([System.IO.Path]::GetFileName($stagedFile))
+        Copy-Item -LiteralPath $stagedFile -Destination $destination -Force
+        $deliveryFiles.Add($destination)
+    }
+
+    $deliveryChecksumPath = Join-Path $safeDeliveryStagingDirectory "SHA256SUMS.txt"
+    Copy-Item -LiteralPath $stagedChecksumPath -Destination $deliveryChecksumPath -Force
+
+    foreach ($index in 0..($stagedProductFiles.Count - 1)) {
+        $sourceHash = (Get-FileHash -LiteralPath $stagedProductFiles[$index] -Algorithm SHA256).Hash
+        $deliveryHash = (Get-FileHash -LiteralPath $deliveryFiles[$index] -Algorithm SHA256).Hash
+        if ($sourceHash -ne $deliveryHash) {
+            throw "产品文件暂存校验失败：$($deliveryFiles[$index])"
+        }
+    }
+
+    foreach ($deliveryFile in $deliveryFiles) {
+        $destination = Join-Path `
+            $resolvedProductDirectory `
+            ([System.IO.Path]::GetFileName($deliveryFile))
+        Move-Item -LiteralPath $deliveryFile -Destination $destination -Force
+    }
+    Move-Item `
+        -LiteralPath $deliveryChecksumPath `
+        -Destination $destinationChecksumPath `
+        -Force
+
+    $currentProductNames = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($name in $stagedProductFiles | ForEach-Object {
+        [System.IO.Path]::GetFileName($_)
+    }) {
+        $currentProductNames.Add($name) | Out-Null
+    }
+    $currentProductNames.Add("SHA256SUMS.txt") | Out-Null
+
+    foreach ($pattern in $ownedProductPatterns) {
+        Get-ChildItem -LiteralPath $resolvedProductDirectory -File -Filter $pattern |
+            Where-Object { -not $currentProductNames.Contains($_.Name) } |
+            Remove-Item -Force
+    }
 }
-Copy-Item -LiteralPath $stagedChecksumPath -Destination $destinationChecksumPath -Force
+finally {
+    if (Test-Path -LiteralPath $safeDeliveryStagingDirectory) {
+        Assert-SafeRecursivePath `
+            -Path $safeDeliveryStagingDirectory `
+            -ParentPath $resolvedProductDirectory | Out-Null
+        Remove-Item -LiteralPath $safeDeliveryStagingDirectory -Recurse -Force
+    }
+}
 
 Write-Host ""
 Write-Host "安装版构建完成：" -ForegroundColor Green

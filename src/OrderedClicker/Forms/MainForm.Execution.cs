@@ -15,7 +15,7 @@ public sealed partial class MainForm
             case ExecutionState.Running:
                 _pauseGate.Pause();
                 SetExecutionState(ExecutionState.Paused);
-                SetStatus("执行已暂停，按 F9 继续。");
+                SetStatus($"执行已暂停，按 {StartPauseHotKeyText} 继续。");
                 break;
             case ExecutionState.Paused:
                 _pauseGate.Resume();
@@ -142,11 +142,11 @@ public sealed partial class MainForm
 
         _startPauseButton.Text = state switch
         {
-            ExecutionState.Running => "暂停 (F9)",
-            ExecutionState.Paused => "继续 (F9)",
+            ExecutionState.Running => $"暂停 ({StartPauseHotKeyText})",
+            ExecutionState.Paused => $"继续 ({StartPauseHotKeyText})",
             ExecutionState.Countdown => "准备中…",
             ExecutionState.Stopping => "正在停止…",
-            _ => "开始 (F9)"
+            _ => $"开始 ({StartPauseHotKeyText})"
         };
         _startPauseButton.Enabled = state is ExecutionState.Idle
             or ExecutionState.Running
@@ -167,6 +167,7 @@ public sealed partial class MainForm
         _moveDownButton.Enabled = enabled;
         _deleteButton.Enabled = enabled;
         _clearButton.Enabled = enabled;
+        _themeSettingsButton.Enabled = enabled;
         _saveButton.Enabled = enabled;
         _loadButton.Enabled = enabled;
         _applyClickIntervalButton.Enabled = enabled;

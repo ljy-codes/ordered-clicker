@@ -867,7 +867,7 @@
       <a href="#parameters">05 参数详细解释</a>
       <a href="#execution">06 开始、暂停与停止</a>
       <a href="#profiles">07 保存与加载方案</a>
-      <a href="#themes">08 主题与使用说明</a>
+      <a href="#themes">08 主题与快捷键设置</a>
       <a href="#display">09 DPI 与多显示器</a>
       <a href="#troubleshooting">10 常见问题</a>
       <a href="#safety">11 安全建议</a>
@@ -911,7 +911,7 @@
           </div>
           <div class="goal-item">
             <strong>核心快捷键</strong>
-            <span>F8 采点，F9 开始或暂停，F10 紧急停止。</span>
+            <span>Ctrl+Alt+F8 采点，Ctrl+Alt+F9 开始或暂停，Ctrl+Alt+F10 紧急停止。</span>
           </div>
           <div class="goal-item">
             <strong>安全原则</strong>
@@ -928,7 +928,7 @@
         <div class="danger">
           <strong>重要提醒：</strong>
           自动点击会真实控制鼠标。首次使用必须先将总循环次数设置为 1，并在
-          <code>连点演示靶场.html</code> 中验证。任何时候都可以按 <kbd>F10</kbd> 停止。
+          <code>连点演示靶场.html</code> 中验证。任何时候都可以按 <kbd>Ctrl+Alt+F10</kbd> 停止。
         </div>
       </article>
 
@@ -974,7 +974,7 @@
               </tr>
               <tr>
                 <td>暂停与停止</td>
-                <td>运行时按 F9 暂停或继续，按 F10 随时停止。</td>
+                <td>运行时按 Ctrl+Alt+F9 暂停或继续，按 Ctrl+Alt+F10 随时停止。</td>
                 <td>发现目标窗口变化时立即暂停或终止。</td>
               </tr>
               <tr>
@@ -1014,7 +1014,7 @@
           <div class="check-group">
             <h4>环境准备</h4>
             <ul class="check-list">
-              <li>暂时关闭可能占用 F8、F9、F10 的程序。</li>
+              <li>默认快捷键为 Ctrl+Alt+F8、Ctrl+Alt+F9、Ctrl+Alt+F10；如有冲突可在设置中修改。</li>
               <li>确认显示器排列、分辨率和缩放比例不再变化。</li>
               <li>关闭桌面通知，避免弹窗遮挡目标位置。</li>
               <li>让连点器和目标程序使用相同权限运行。</li>
@@ -1143,12 +1143,12 @@
             <div class="step-body">
               <h3>开启采点模式</h3>
               <div class="step-fields">
-                <div class="step-field"><strong>操作目的</strong><span>允许 F8 记录当前鼠标位置。</span></div>
-                <div class="step-field"><strong>操作位置</strong><span>表格下方“采点模式 (F8)”按钮。</span></div>
+                <div class="step-field"><strong>操作目的</strong><span>允许 Ctrl+Alt+F8 记录当前鼠标位置。</span></div>
+                <div class="step-field"><strong>操作位置</strong><span>表格下方“采点模式 (Ctrl+Alt+F8)”按钮。</span></div>
                 <div class="step-field"><strong>操作步骤</strong><span>单击按钮，观察按钮文字变为“结束采点”。</span></div>
                 <div class="step-field"><strong>正确结果</strong><span>状态栏提示采点模式已开启。</span></div>
-                <div class="step-field"><strong>注意事项</strong><span>仅开启模式不会立即记录坐标，必须按 F8。</span></div>
-                <div class="step-field"><strong>常见错误</strong><span>直接点击目标按钮，而没有按 F8。</span></div>
+                <div class="step-field"><strong>注意事项</strong><span>仅开启模式不会立即记录坐标，必须按 Ctrl+Alt+F8。</span></div>
+                <div class="step-field"><strong>常见错误</strong><span>直接点击目标按钮，而没有按 Ctrl+Alt+F8。</span></div>
               </div>
             </div>
           </article>
@@ -1160,9 +1160,9 @@
               <div class="step-fields">
                 <div class="step-field"><strong>操作目的</strong><span>建立蓝、青、紫三个有序点位。</span></div>
                 <div class="step-field"><strong>操作位置</strong><span>演示靶场三个按钮的中心。</span></div>
-                <div class="step-field"><strong>操作步骤</strong><span>鼠标移到蓝色按钮中心按 F8，再对青色和紫色重复。</span></div>
+                <div class="step-field"><strong>操作步骤</strong><span>鼠标移到蓝色按钮中心按 Ctrl+Alt+F8，再对青色和紫色重复。</span></div>
                 <div class="step-field"><strong>正确结果</strong><span>表格出现三行，顺序依次为 1、2、3。</span></div>
-                <div class="step-field"><strong>注意事项</strong><span>按 F8 时不要点击鼠标，保持指针稳定。</span></div>
+                <div class="step-field"><strong>注意事项</strong><span>按 Ctrl+Alt+F8 时不要点击鼠标，保持指针稳定。</span></div>
                 <div class="step-field"><strong>常见错误</strong><span>在按钮边缘采点，窗口轻微变化后更容易偏离。</span></div>
               </div>
             </div>
@@ -1173,12 +1173,12 @@
             <div class="step-body">
               <h3>结束采点并检查顺序</h3>
               <div class="step-fields">
-                <div class="step-field"><strong>操作目的</strong><span>防止后续误按 F8 增加多余点位。</span></div>
+                <div class="step-field"><strong>操作目的</strong><span>防止后续误按 Ctrl+Alt+F8 增加多余点位。</span></div>
                 <div class="step-field"><strong>操作位置</strong><span>“结束采点”按钮和点位表格。</span></div>
                 <div class="step-field"><strong>操作步骤</strong><span>单击结束采点，确认三行坐标和显示器信息均存在。</span></div>
-                <div class="step-field"><strong>正确结果</strong><span>按钮恢复为“采点模式 (F8)”。</span></div>
+                <div class="step-field"><strong>正确结果</strong><span>按钮恢复为“采点模式 (Ctrl+Alt+F8)”。</span></div>
                 <div class="step-field"><strong>注意事项</strong><span>如果顺序错误，可以选中行后使用上移或下移。</span></div>
-                <div class="step-field"><strong>常见错误</strong><span>采点后忘记关闭模式，后续按 F8 又增加了点位。</span></div>
+                <div class="step-field"><strong>常见错误</strong><span>采点后忘记关闭模式，后续按 Ctrl+Alt+F8 又增加了点位。</span></div>
               </div>
             </div>
           </article>
@@ -1216,11 +1216,11 @@
           <article class="step">
             <div class="step-index">8</div>
             <div class="step-body">
-              <h3>重置靶场并按 F9 开始</h3>
+              <h3>重置靶场并按 Ctrl+Alt+F9 开始</h3>
               <div class="step-fields">
                 <div class="step-field"><strong>操作目的</strong><span>从零计数开始核对执行结果。</span></div>
-                <div class="step-field"><strong>操作位置</strong><span>靶场“重置计数”和键盘 F9。</span></div>
-                <div class="step-field"><strong>操作步骤</strong><span>重置后切回连点器，按 F9，利用三秒倒计时切到靶场。</span></div>
+                <div class="step-field"><strong>操作位置</strong><span>靶场“重置计数”和键盘 Ctrl+Alt+F9。</span></div>
+                <div class="step-field"><strong>操作步骤</strong><span>重置后切回连点器，按 Ctrl+Alt+F9，利用三秒倒计时切到靶场。</span></div>
                 <div class="step-field"><strong>正确结果</strong><span>状态从倒计时变为执行中，按钮计数开始增长。</span></div>
                 <div class="step-field"><strong>注意事项</strong><span>倒计时期间不要改变任何窗口位置。</span></div>
                 <div class="step-field"><strong>常见错误</strong><span>倒计时期间拖动靶场窗口，导致点击位置失效。</span></div>
@@ -1249,11 +1249,11 @@
               <h3>练习暂停、继续和停止</h3>
               <div class="step-fields">
                 <div class="step-field"><strong>操作目的</strong><span>掌握运行中的安全控制方式。</span></div>
-                <div class="step-field"><strong>操作位置</strong><span>键盘 F9、F10 和主界面按钮。</span></div>
-                <div class="step-field"><strong>操作步骤</strong><span>运行时按 F9 暂停，再按一次继续；另一次运行中按 F10 停止。</span></div>
+                <div class="step-field"><strong>操作位置</strong><span>键盘 Ctrl+Alt+F9、Ctrl+Alt+F10 和主界面按钮。</span></div>
+                <div class="step-field"><strong>操作步骤</strong><span>运行时按 Ctrl+Alt+F9 暂停，再按一次继续；另一次运行中按 Ctrl+Alt+F10 停止。</span></div>
                 <div class="step-field"><strong>正确结果</strong><span>暂停时计数不再变化，停止后状态回到就绪。</span></div>
-                <div class="step-field"><strong>注意事项</strong><span>发现目标窗口变化时优先按 F10。</span></div>
-                <div class="step-field"><strong>常见错误</strong><span>连续快速按多次 F9，导致暂停和继续状态判断错误。</span></div>
+                <div class="step-field"><strong>注意事项</strong><span>发现目标窗口变化时优先按 Ctrl+Alt+F10。</span></div>
+                <div class="step-field"><strong>常见错误</strong><span>连续快速按多次 Ctrl+Alt+F9，导致暂停和继续状态判断错误。</span></div>
               </div>
             </div>
           </article>
@@ -1280,7 +1280,7 @@
               <div class="step-fields">
                 <div class="step-field"><strong>操作目的</strong><span>确认方案可以在当前环境安全重复执行。</span></div>
                 <div class="step-field"><strong>操作位置</strong><span>点位表、循环参数、状态栏和目标窗口。</span></div>
-                <div class="step-field"><strong>操作步骤</strong><span>核对启用状态、顺序、参数、窗口位置和 F10 可用性。</span></div>
+                <div class="step-field"><strong>操作步骤</strong><span>核对启用状态、顺序、参数、窗口位置和 Ctrl+Alt+F10 可用性。</span></div>
                 <div class="step-field"><strong>正确结果</strong><span>所有检查项通过后再提高循环次数。</span></div>
                 <div class="step-field"><strong>注意事项</strong><span>任何环境变化都应重新进行一轮测试。</span></div>
                 <div class="step-field"><strong>常见错误</strong><span>第一次测试成功后无限提高循环次数，不再观察目标状态。</span></div>
@@ -1377,17 +1377,17 @@
         </div>
 
         <div class="shortcut-row">
-          <div class="key"><kbd>F8</kbd></div>
+          <div class="key"><kbd>Ctrl+Alt+F8</kbd></div>
           <div><strong>采集点位</strong><br>只在采点模式开启时记录鼠标位置。</div>
           <div>不会开始任务，也不会执行鼠标点击。</div>
         </div>
         <div class="shortcut-row">
-          <div class="key"><kbd>F9</kbd></div>
+          <div class="key"><kbd>Ctrl+Alt+F9</kbd></div>
           <div><strong>开始 / 暂停 / 继续</strong><br>空闲时开始，运行时暂停，暂停时继续。</div>
           <div>开始前有三秒倒计时，用于切换到目标窗口。</div>
         </div>
         <div class="shortcut-row">
-          <div class="key"><kbd>F10</kbd></div>
+          <div class="key"><kbd>Ctrl+Alt+F10</kbd></div>
           <div><strong>立即停止</strong><br>终止倒计时、等待或点击任务。</div>
           <div>出现异常、目标窗口移动或误点击风险时立即使用。</div>
         </div>
@@ -1395,7 +1395,7 @@
         <div class="danger">
           <strong>紧急停止规则：</strong>
           不要等待当前一轮结束。只要发现点击位置不正确、目标页面发生变化、
-          鼠标指针被遮挡或出现不应点击的窗口，立即按 <kbd>F10</kbd>。
+          鼠标指针被遮挡或出现不应点击的窗口，立即按 <kbd>Ctrl+Alt+F10</kbd>。
         </div>
       </section>
 
@@ -1433,16 +1433,16 @@
         <div class="section-heading">
           <span class="section-number">08</span>
           <div>
-            <h2>主题与使用说明</h2>
-            <p>主题只改变界面颜色，不改变点位、方案和点击执行行为。</p>
+            <h2>主题与快捷键设置</h2>
+            <p>主题和快捷键都会保存到本机，下次启动自动恢复。</p>
           </div>
         </div>
 
         <figure class="image-frame">
-          <img src="assets/screenshots/主题设置.png" alt="有序连点器主题设置弹窗" data-zoomable>
+          <img src="assets/screenshots/主题设置.png" alt="有序连点器设置弹窗" data-zoomable>
           <figcaption class="image-caption">
-            <span>点击“设置”打开主题卡片，选择后立即预览。</span>
-            <span>五套预设主题</span>
+            <span>点击“设置”可选择主题并修改三个全局快捷键。</span>
+            <span>主题与快捷键</span>
           </figcaption>
         </figure>
 
@@ -1461,7 +1461,19 @@
 
         <div class="tip">
           在设置弹窗中点击主题卡片会立即预览。点击“保存”后下次启动自动恢复；
-          点击“取消”、关闭窗口或按 Esc，会恢复打开设置前的主题。
+          点击“取消”、关闭窗口或按 Esc，会恢复打开设置前的主题和快捷键。
+        </div>
+
+        <div class="panel">
+          <h3>修改快捷键</h3>
+          <ol>
+            <li>点击“采点”“开始 / 暂停”或“停止”对应的快捷键输入框。</li>
+            <li>直接按下新的组合键，例如 <kbd>Ctrl+Shift+F8</kbd>。</li>
+            <li>快捷键必须包含 Ctrl、Alt、Shift 或 Win，不能只使用单个字母或功能键。</li>
+            <li>三个操作不能使用相同组合；点击“恢复默认快捷键”可恢复 Ctrl+Alt+F8、Ctrl+Alt+F9、Ctrl+Alt+F10。</li>
+            <li>点击“保存”。如果组合键被其他软件占用，程序会提示冲突，并恢复修改前仍可用的快捷键。</li>
+          </ol>
+          <p>无论快捷键是否可用，主界面的采点、开始和停止按钮都可以继续操作。</p>
         </div>
 
         <figure class="image-frame">
@@ -1519,12 +1531,16 @@
 
         <div class="faq-grid">
           <article class="faq">
-            <strong>按 F8 没有新增点位</strong>
-            <p>确认采点模式已经开启；检查 F8 是否被其他软件占用；也可以关闭冲突软件后重启连点器。</p>
+            <strong>按 Ctrl+Alt+F8 没有新增点位</strong>
+            <p>确认采点模式已经开启；进入设置更换组合键。如果新组合被占用，程序会提示并保留原快捷键，按钮仍可使用。</p>
           </article>
           <article class="faq">
-            <strong>按 F9 没有开始</strong>
+            <strong>按 Ctrl+Alt+F9 没有开始</strong>
             <p>检查是否至少有一个启用点位；确认点击次数和等待时间都是有效整数；查看状态栏错误提示。</p>
+          </article>
+          <article class="faq">
+            <strong>快捷键无法保存</strong>
+            <p>快捷键必须包含 Ctrl、Alt、Shift 或 Win，三个操作不能重复。系统或其他软件占用组合键时，请换一个组合。</p>
           </article>
           <article class="faq">
             <strong>点击位置出现偏移</strong>
@@ -1574,7 +1590,7 @@
             <tr><td>先执行一轮</td><td>快速发现坐标、顺序和等待时间问题。</td></tr>
             <tr><td>优先在演示靶场测试</td><td>不会影响真实业务数据，结果可以直接核对。</td></tr>
             <tr><td>执行时不要移动鼠标</td><td>人工移动会干扰观察，也可能改变目标程序状态。</td></tr>
-            <tr><td>保持 F10 可用</td><td>发生窗口变化或误点击风险时可以立即停止。</td></tr>
+            <tr><td>保持 Ctrl+Alt+F10 可用</td><td>发生窗口变化或误点击风险时可以立即停止。</td></tr>
             <tr><td>定期观察执行结果</td><td>即使点位正确，目标页面内容也可能发生变化。</td></tr>
             <tr><td>环境变化后重新采点</td><td>屏幕坐标不会自动跟随窗口和显示器变化。</td></tr>
           </tbody>
@@ -1600,7 +1616,7 @@
               <li>不需要的点位已取消启用。</li>
               <li>点击次数和等待时间已经核对。</li>
               <li>首次运行只设置一轮。</li>
-              <li>确认按 F10 可以停止。</li>
+              <li>确认按 Ctrl+Alt+F10 可以停止。</li>
             </ul>
           </div>
           <div class="check-group">
@@ -1623,7 +1639,7 @@
       </section>
 
       <div class="footer-note">
-        文档版本：1.1 · 更新日期：2026-07-22 ·
+        文档版本：1.2 · 更新日期：2026-07-22 ·
         本文档只提供软件操作说明，不建议将自动点击用于高风险或不可撤销操作。
       </div>
     </main>

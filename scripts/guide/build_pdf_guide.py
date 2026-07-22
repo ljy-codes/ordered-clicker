@@ -243,7 +243,7 @@ def draw_page(canvas, doc) -> None:
     canvas.line(18 * mm, 15 * mm, width - 18 * mm, 15 * mm)
     canvas.setFont("GuideCN", 7.5)
     canvas.setFillColor(MUTED)
-    canvas.drawString(18 * mm, 9.5 * mm, "有序连点器 1.1.0 · 零基础使用说明")
+    canvas.drawString(18 * mm, 9.5 * mm, "有序连点器 1.2.0 · 零基础使用说明")
     canvas.drawRightString(width - 18 * mm, 9.5 * mm, f"第 {doc.page} 页")
     canvas.restoreState()
 
@@ -272,7 +272,7 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
         guide_table(
             [
                 ["适用用户", "核心能力", "文档版本"],
-                ["零基础普通用户", "多点有序点击、批量时间、单点例外、循环执行", "1.1 · 2026-07-22"],
+                ["零基础普通用户", "多点有序点击、批量时间、单点例外、循环执行", "1.2 · 2026-07-22"],
             ],
             [42 * mm, 88 * mm, 42 * mm],
             style_map,
@@ -281,7 +281,7 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
     callout(
         story,
         "安全提醒：",
-        "自动点击会真实控制鼠标。首次使用只设置 1 轮，并在安全空白页面测试；任何时候按 F10 停止。",
+        "自动点击会真实控制鼠标。首次使用只设置 1 轮，并在安全空白页面测试；任何时候按 Ctrl+Alt+F10 停止。",
         style_map,
         "#ff5b6e",
     )
@@ -292,11 +292,11 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
         guide_table(
             [
                 ["步骤", "操作", "结果"],
-                ["1", "打开采点模式，将鼠标移到目标位置后按 F8。", "按采集顺序新增点位。"],
+                ["1", "打开采点模式，将鼠标移到目标位置后按 Ctrl+Alt+F8。", "按采集顺序新增点位。"],
                 ["2", "在“点位时间”栏填写时间，并点击对应“应用全部”。", "所有点统一获得该列时间。"],
                 ["3", "直接修改特殊点位所在行。", "该行成为例外，不影响其他点。"],
                 ["4", "设置总循环次数和轮间等待。", "整组点位按顺序重复执行。"],
-                ["5", "按 F9 开始；按 F9 暂停/继续；按 F10 停止。", "随时控制任务。"],
+                ["5", "按 Ctrl+Alt+F9 开始；按 Ctrl+Alt+F9 暂停/继续；按 Ctrl+Alt+F10 停止。", "随时控制任务。"],
                 ["6", "确认无误后保存方案。", "下次可直接加载复用。"],
             ],
             [16 * mm, 100 * mm, 56 * mm],
@@ -308,9 +308,9 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
         guide_table(
             [
                 ["快捷键", "作用", "什么时候用"],
-                ["F8", "采集当前鼠标位置", "只在采点模式开启时"],
-                ["F9", "开始、暂停、继续", "配置完成后或运行过程中"],
-                ["F10", "立即停止", "发现误点风险或窗口变化时"],
+                ["Ctrl+Alt+F8", "采集当前鼠标位置", "只在采点模式开启时"],
+                ["Ctrl+Alt+F9", "开始、暂停、继续", "配置完成后或运行过程中"],
+                ["Ctrl+Alt+F10", "立即停止", "发现误点风险或窗口变化时"],
             ],
             [26 * mm, 58 * mm, 88 * mm],
             style_map,
@@ -343,7 +343,7 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
             "使用 Windows 10 或 Windows 11 x64。",
             "普通权限的连点器不能可靠控制以管理员身份运行的目标程序。",
             "如目标程序以管理员身份运行，请关闭连点器后也以管理员身份启动。",
-            "暂时关闭可能占用 F8、F9、F10 的软件。",
+            "默认使用 Ctrl+Alt+F8、Ctrl+Alt+F9、Ctrl+Alt+F10；如有冲突可在设置中修改。",
         ],
         style_map,
     )
@@ -376,7 +376,7 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
                 ["方案区", "设置方案名称、总循环次数和轮间等待，并保存或加载。"],
                 ["点位时间", "设置全局点击间隔、点后等待，并通过“应用全部”批量更新。"],
                 ["点位表", "查看启用状态、顺序、坐标、点击次数、时间和显示器。"],
-                ["点位操作栏", "采点、上移、下移、删除、清空、主题设置和使用说明。"],
+                ["点位操作栏", "采点、上移、下移、删除、清空、设置和使用说明。"],
                 ["执行区", "开始、暂停、继续和停止，并查看运行状态。"],
             ],
             [38 * mm, 134 * mm],
@@ -400,9 +400,9 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
     bullets(
         story,
         [
-            "点击“采点模式 (F8)”，按钮会变成“结束采点”。",
-            "把鼠标移到第一个目标位置中心，按一次 F8。",
-            "依次移动到第二、第三个位置，每个位置按一次 F8。",
+            "点击“采点模式 (Ctrl+Alt+F8)”，按钮会变成“结束采点”。",
+            "把鼠标移到第一个目标位置中心，按一次 Ctrl+Alt+F8。",
+            "依次移动到第二、第三个位置，每个位置按一次 Ctrl+Alt+F8。",
             "点位按采集顺序出现在表格中。",
         ],
         style_map,
@@ -411,7 +411,7 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
     bullets(
         story,
         [
-            "点击“结束采点”，防止后续误按 F8 添加多余点位。",
+            "点击“结束采点”，防止后续误按 Ctrl+Alt+F8 添加多余点位。",
             "检查表格是否有三行，以及坐标和显示器信息是否完整。",
             "顺序错误时，选中一行后使用“上移”或“下移”。",
         ],
@@ -446,8 +446,8 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
         story,
         [
             "总循环次数先填 1，确认无误后可改为 2；轮间等待示例填 1500。",
-            "按 F9 后有 3 秒倒计时，利用这段时间切换到目标窗口。",
-            "运行中按 F9 暂停或继续，按 F10 随时停止。",
+            "按 Ctrl+Alt+F9 后有 3 秒倒计时，利用这段时间切换到目标窗口。",
+            "运行中按 Ctrl+Alt+F9 暂停或继续，按 Ctrl+Alt+F10 随时停止。",
             "两轮结束后，三个点的总点击次数应分别为 4、2、6。",
         ],
         style_map,
@@ -514,10 +514,10 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
         guide_table(
             [
                 ["状态", "操作", "程序行为"],
-                ["空闲", "按 F9 或点击开始", "进入 3 秒倒计时，然后执行。"],
-                ["运行中", "按 F9", "暂停当前倒计时、等待或点位流程。"],
-                ["已暂停", "再次按 F9", "从暂停位置继续。"],
-                ["任意执行状态", "按 F10", "终止任务并回到就绪。"],
+                ["空闲", "按 Ctrl+Alt+F9 或点击开始", "进入 3 秒倒计时，然后执行。"],
+                ["运行中", "按 Ctrl+Alt+F9", "暂停当前倒计时、等待或点位流程。"],
+                ["已暂停", "再次按 Ctrl+Alt+F9", "从暂停位置继续。"],
+                ["任意执行状态", "按 Ctrl+Alt+F10", "终止任务并回到就绪。"],
             ],
             [34 * mm, 52 * mm, 86 * mm],
             style_map,
@@ -526,7 +526,7 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
     callout(
         story,
         "立即停止：",
-        "发现目标窗口移动、弹窗遮挡、页面内容变化或误点风险时，优先按 F10。",
+        "发现目标窗口移动、弹窗遮挡、页面内容变化或误点风险时，优先按 Ctrl+Alt+F10。",
         style_map,
         "#ff5b6e",
     )
@@ -557,12 +557,12 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
     )
 
     story.append(PageBreak())
-    section_header(story, "08", "主题与内置帮助", "主题只改变颜色，不改变点位和执行行为。", style_map)
+    section_header(story, "08", "主题与快捷键设置", "设置会保存到本机，下次启动自动恢复。", style_map)
     story.append(
         screenshot(
             SCREENSHOT_DIR / "主题设置.png",
             118 * mm,
-            72 * mm,
+            100 * mm,
         )
     )
     story.append(Spacer(1, 4 * mm))
@@ -571,7 +571,11 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
         [
             "内置主题：极光科技、经典深色、海洋蓝、翡翠绿、明亮模式。",
             "点击主题卡片立即预览；点击保存后下次启动自动恢复。",
-            "点击取消、关闭弹窗或按 Esc，会恢复打开设置前的主题。",
+            "快捷键输入框获得焦点后，直接按下新的组合键即可记录。",
+            "快捷键必须包含 Ctrl、Alt、Shift 或 Win，三个操作不能重复。",
+            "点击“恢复默认快捷键”可恢复 Ctrl+Alt+F8、Ctrl+Alt+F9、Ctrl+Alt+F10。",
+            "保存时若新快捷键被占用，程序会提示冲突并恢复修改前仍可用的快捷键。",
+            "点击取消、关闭弹窗或按 Esc，会撤销本次未保存的主题和快捷键修改。",
             "主界面的“? 使用说明”可随时打开内置帮助。",
         ],
         style_map,
@@ -620,7 +624,8 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
         guide_table(
             [
                 ["现象", "处理方法"],
-                ["F8/F9/F10 无反应", "检查是否被其他程序占用；按钮操作仍可使用。"],
+                ["默认快捷键无反应", "进入设置更换组合键；若注册失败程序会保留原快捷键，按钮始终可用。"],
+                ["快捷键无法保存", "必须包含 Ctrl、Alt、Shift 或 Win，并确保三个操作不重复。"],
                 ["点击位置偏移", "检查窗口、分辨率、缩放和显示器排列，变化后重新采点。"],
                 ["无法点击管理员程序", "让连点器与目标程序使用相同权限。"],
                 ["时间输入后恢复", "点击间隔至少 10 ms；输入后点击其他单元格完成编辑。"],
@@ -648,7 +653,7 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
         [
             "正式使用前先执行一轮，核对坐标、顺序、次数和等待时间。",
             "执行期间不要主动移动鼠标，不要拖动目标窗口。",
-            "始终确保 F10 可用，并定期观察目标页面状态。",
+            "始终确保 Ctrl+Alt+F10 可用，并定期观察目标页面状态。",
             "页面出现弹窗、加载异常或内容变化时立即停止。",
             "环境发生变化后重新采点，不继续依赖旧坐标。",
         ],
@@ -667,7 +672,7 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
             "已先应用全局时间，再确认单行例外。",
             "点击次数、点击间隔、点后等待和循环次数已核对。",
             "首次或环境变化后只运行一轮。",
-            "确认 F10 可以立即停止。",
+            "确认 Ctrl+Alt+F10 可以立即停止。",
         ],
         style_map,
     )
@@ -696,8 +701,8 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
         guide_table(
             [
                 ["文件", "用途"],
-                ["ordered-clicker-setup-v1.1.0.exe", "Windows 安装版。"],
-                ["ordered-clicker-portable-v1.1.0.zip", "免安装便携版。"],
+                ["ordered-clicker-setup-v1.2.0.exe", "Windows 安装版。"],
+                ["ordered-clicker-portable-v1.2.0.zip", "免安装便携版。"],
                 ["有序连点器-使用说明.pdf", "当前离线说明书。"],
                 ["有序连点器-使用说明.html", "可搜索、可放大图片的网页说明。"],
                 ["有序连点器-视频演示.mp4", "完整语音操作演示，视频内容沿用上一版。"],
@@ -710,7 +715,7 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
     callout(
         story,
         "版本说明：",
-        "1.1.0 新增点击间隔和点后等待的全局“应用全部”、单行覆盖及新采集点继承。",
+        "1.2.0 默认快捷键调整为 Ctrl+Alt+F8/F9/F10，并支持在设置中自定义、冲突检测和失败回退。",
         style_map,
         "#19c7d9",
     )
@@ -731,7 +736,7 @@ def main() -> None:
         bottomMargin=20 * mm,
         title="有序连点器使用说明",
         author="ljy-codes",
-        subject="有序连点器 1.1.0 零基础操作指导",
+        subject="有序连点器 1.2.0 零基础操作指导",
     )
     frame = Frame(
         doc.leftMargin,

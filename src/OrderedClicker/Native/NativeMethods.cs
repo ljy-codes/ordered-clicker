@@ -21,6 +21,9 @@ internal static class NativeMethods
     public static extern bool UnregisterHotKey(IntPtr windowHandle, int id);
 
     [DllImport("user32.dll")]
+    public static extern short GetKeyState(int virtualKey);
+
+    [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool GetCursorPos(out Point point);
 

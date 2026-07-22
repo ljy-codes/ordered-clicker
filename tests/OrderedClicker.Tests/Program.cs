@@ -47,6 +47,11 @@ internal static class Program
                 PointTimingServiceTests.Run();
                 return Task.CompletedTask;
             }),
+            ("HotKeyBindingService", () =>
+            {
+                HotKeyBindingServiceTests.Run();
+                return Task.CompletedTask;
+            }),
             ("ClickExecutionEngine", ClickExecutionEngineTests.RunAsync),
             ("ProfileService", () =>
             {

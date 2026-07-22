@@ -16,10 +16,14 @@ internal static class UiSmokeTests
         AssertDarkTheme(form);
         AssertUsageHelpEntry(form);
         AssertThemeSettingsEntry(form);
+        AssertSettingsDisabledDuringExecution(form);
         AssertGlobalTimingControls(form);
         AssertGlobalTimingApplication(form);
+        AssertDefaultHotKeyText(form);
+        AssertUnchangedHotKeysAreDetected();
         AssertThemeSettingsDialog(form);
         AssertConfiguredThemeLoads();
+        AssertConfiguredHotKeysLoad();
         AssertThemePreviewCancelAndSave();
         AssertUsageHelpDialog(form);
         AssertMinimumWindowLayout();
@@ -211,6 +215,44 @@ internal static class UiSmokeTests
         }
     }
 
+    private static void AssertConfiguredHotKeysLoad()
+    {
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            $"OrderedClicker.UiHotKeys.{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var settingsService = new SettingsService(Path.Combine(directory, "settings.json"));
+            settingsService.Save(new AppSettings
+            {
+                CaptureHotKey = new HotKeyBinding(
+                    Keys.F6,
+                    ShortcutModifiers.Control | ShortcutModifiers.Shift),
+                StartPauseHotKey = new HotKeyBinding(
+                    Keys.F7,
+                    ShortcutModifiers.Control | ShortcutModifiers.Shift),
+                StopHotKey = new HotKeyBinding(
+                    Keys.F8,
+                    ShortcutModifiers.Control | ShortcutModifiers.Shift)
+            });
+            using var form = CreateLaidOutForm(settingsService);
+            var text = string.Join(
+                Environment.NewLine,
+                EnumerateControls(form).Select(control => control.Text));
+
+            TestAssert.True(
+                text.Contains("Ctrl+Shift+F6")
+                && text.Contains("Ctrl+Shift+F7")
+                && text.Contains("Ctrl+Shift+F8"),
+                "主窗体应显示已保存的自定义快捷键");
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
     private static void AssertThemeSettingsEntry(MainForm form)
     {
         var buttons = EnumerateControls(form).OfType<Button>().ToList();
@@ -226,6 +268,24 @@ internal static class UiSmokeTests
             "主题设置按钮应位于清空按钮右侧的空闲区域");
         TestAssert.True(helpButton.Left > settingsButton.Right,
             "使用说明按钮应排列在主题设置按钮右侧");
+    }
+
+    private static void AssertSettingsDisabledDuringExecution(MainForm form)
+    {
+        var settingsButton = EnumerateControls(form)
+            .OfType<Button>()
+            .Single(button => button.Name == "ThemeSettingsButton");
+        var method = typeof(MainForm).GetMethod(
+            "SetConfigurationEnabled",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+
+        method!.Invoke(form, [false]);
+        TestAssert.True(
+            !settingsButton.Enabled,
+            "执行期间应禁止修改主题和全局快捷键");
+
+        method.Invoke(form, [true]);
+        TestAssert.True(settingsButton.Enabled, "执行结束后应恢复设置入口");
     }
 
     private static void AssertGlobalTimingControls(MainForm form)
@@ -316,6 +376,8 @@ internal static class UiSmokeTests
         var dialogOpened = false;
         var themeCardCount = 0;
         var dialogUsesCurrentTheme = false;
+        var hotKeyControlNames = new HashSet<string>();
+        var restoreDefaultsButtonFound = false;
         using var timer = new System.Windows.Forms.Timer { Interval = 20 };
         timer.Tick += (_, _) =>
         {
@@ -330,6 +392,13 @@ internal static class UiSmokeTests
             dialogOpened = true;
             themeCardCount = EnumerateControls(dialog)
                 .Count(control => control.Name.StartsWith("ThemeCard_", StringComparison.Ordinal));
+            hotKeyControlNames = EnumerateControls(dialog)
+                .Where(control => control.Name.EndsWith("HotKeyInput", StringComparison.Ordinal))
+                .Select(control => control.Name)
+                .ToHashSet(StringComparer.Ordinal);
+            restoreDefaultsButtonFound = EnumerateControls(dialog)
+                .OfType<Button>()
+                .Any(button => button.Name == "RestoreDefaultHotKeysButton");
             dialogUsesCurrentTheme = dialog.BackColor == form.BackColor;
             dialog.Close();
         };
@@ -340,7 +409,61 @@ internal static class UiSmokeTests
 
         TestAssert.True(dialogOpened, "点击主题设置按钮后应打开设置弹窗");
         TestAssert.Equal(5, themeCardCount, "设置弹窗应显示五张主题卡片");
+        TestAssert.True(
+            hotKeyControlNames.SetEquals(
+                [
+                    "CaptureHotKeyInput",
+                    "StartPauseHotKeyInput",
+                    "StopHotKeyInput"
+                ]),
+            "设置弹窗应包含三个快捷键输入框");
+        TestAssert.True(restoreDefaultsButtonFound, "设置弹窗应包含恢复默认快捷键按钮");
         TestAssert.True(dialogUsesCurrentTheme, "设置弹窗应使用当前主题");
+    }
+
+    private static void AssertDefaultHotKeyText(MainForm form)
+    {
+        var text = string.Join(
+            Environment.NewLine,
+            EnumerateControls(form).Select(control => control.Text));
+        var statusText = string.Join(
+            Environment.NewLine,
+            EnumerateControls(form)
+                .OfType<StatusStrip>()
+                .SelectMany(strip => strip.Items.Cast<ToolStripItem>())
+                .Select(item => item.Text));
+
+        TestAssert.True(
+            text.Contains("Ctrl+Alt+F8")
+            && text.Contains("Ctrl+Alt+F9")
+            && text.Contains("Ctrl+Alt+F10"),
+            "主界面按钮和提示应显示默认组合快捷键");
+        TestAssert.True(
+            statusText.Contains("Ctrl+Alt+F8")
+            && statusText.Contains("Ctrl+Alt+F9")
+            && statusText.Contains("Ctrl+Alt+F10"),
+            "状态栏应显示默认组合快捷键");
+    }
+
+    private static void AssertUnchangedHotKeysAreDetected()
+    {
+        var method = typeof(MainForm).GetMethod(
+            "HotKeysChanged",
+            BindingFlags.Static | BindingFlags.NonPublic);
+        var original = new AppSettings();
+        var themeOnlyChange = new AppSettings
+        {
+            Theme = AppThemeId.Light,
+            CaptureHotKey = original.CaptureHotKey,
+            StartPauseHotKey = original.StartPauseHotKey,
+            StopHotKey = original.StopHotKey
+        };
+
+        var changed = (bool)method!.Invoke(null, [original, themeOnlyChange])!;
+
+        TestAssert.True(
+            !changed,
+            "仅切换主题时不应注销并重新注册全局快捷键");
     }
 
     private static void AssertThemePreviewCancelAndSave()
@@ -466,10 +589,10 @@ internal static class UiSmokeTests
         TestAssert.True(dialogOpened, "点击使用说明按钮后应打开说明弹窗");
         TestAssert.True(hasScrollableBody, "使用说明正文应只读且可滚动");
         TestAssert.True(
-            dialogText.Contains("F8")
-            && dialogText.Contains("F9")
-            && dialogText.Contains("F10"),
-            "使用说明应包含快捷键说明");
+            dialogText.Contains("Ctrl+Alt+F8")
+            && dialogText.Contains("Ctrl+Alt+F9")
+            && dialogText.Contains("Ctrl+Alt+F10"),
+            "使用说明应包含当前组合快捷键说明");
         TestAssert.True(
             dialogText.Contains("缩放") && dialogText.Contains("重新采点"),
             "使用说明应包含屏幕缩放注意事项");

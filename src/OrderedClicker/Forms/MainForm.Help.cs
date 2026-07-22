@@ -1,3 +1,5 @@
+using OrderedClicker.Core;
+using OrderedClicker.Models;
 using OrderedClicker.Native;
 using OrderedClicker.Theming;
 
@@ -7,48 +9,22 @@ public sealed partial class MainForm
 {
     private void ShowUsageHelp()
     {
-        using var dialog = new UsageHelpDialog(_theme);
+        using var dialog = new UsageHelpDialog(_theme, _settings);
         dialog.ShowDialog(this);
     }
 
     private sealed class UsageHelpDialog : Form
     {
-        private const string HelpText =
-            """
-            一、配置执行方案
-            设置方案名称、总循环次数和轮间等待时间。总循环次数表示全部启用点位按顺序执行多少轮；轮间等待只发生在两轮之间。
+        private readonly string _captureHotKeyText;
+        private readonly string _startPauseHotKeyText;
+        private readonly string _stopHotKeyText;
 
-            二、采集点击位置
-            点击“采点模式”后，将鼠标移动到目标位置并按 F8。每按一次 F8 会记录一个点位，点位按采集顺序执行。采点完成后再次点击“结束采点”。
-
-            三、调整点位顺序
-            选中表格中的点位，使用“上移”或“下移”调整执行顺序。“启用”未勾选的点位会被跳过，但不会从方案中删除。
-
-            四、设置每个点的动作
-            点击次数：当前点位连续点击多少次。
-            点击间隔：同一点位多次点击之间的等待时间，单位为毫秒。
-            点后等待：当前点位完成全部点击后，进入下一个点位前的等待时间。
-            批量设置：在“点位时间”栏输入点击间隔或点后等待，点击对应的“应用全部”，只会统一修改该列的所有点位。
-            单点例外：批量设置后仍可直接修改某一行，例如将其中一个点的点击间隔改为 200，只对该点生效。
-            新采集点：自动继承“点位时间”栏中的当前数值；修改单行不会反向改变全局默认值。
-
-            五、开始、暂停和停止
-            F9：开始任务；运行中按 F9 暂停，再按一次继续。
-            F10：随时停止倒计时、等待或点击任务。
-            开始前有 3 秒倒计时，可利用这段时间切换到目标窗口。
-
-            六、保存与加载
-            “保存”会将当前方案写入 JSON 文件，包括点位顺序、点击参数和显示器信息。“加载”可恢复之前保存的方案。
-
-            七、显示器与屏幕缩放
-            程序使用 Per-Monitor V2 DPI 和屏幕物理坐标处理点击位置。如果显示器分辨率、排列位置、主副屏关系或缩放比例发生变化，原坐标可能不再准确。出现相关提示时，请在当前显示环境下重新采点。
-
-            八、使用建议
-            先用较少循环次数验证点位和等待时间，确认无误后再提高循环次数。执行过程中可随时按 F10 停止。
-            """;
-
-        public UsageHelpDialog(AppTheme theme)
+        public UsageHelpDialog(AppTheme theme, AppSettings settings)
         {
+            _captureHotKeyText = HotKeyBindingService.Format(settings.CaptureHotKey);
+            _startPauseHotKeyText = HotKeyBindingService.Format(settings.StartPauseHotKey);
+            _stopHotKeyText = HotKeyBindingService.Format(settings.StopHotKey);
+
             Name = "UsageHelpDialog";
             Text = "使用说明";
             StartPosition = FormStartPosition.CenterParent;
@@ -78,7 +54,44 @@ public sealed partial class MainForm
             ApplyTitleBarTheme(theme);
         }
 
-        private static Control CreateHeader(AppTheme theme)
+        private string HelpText =>
+            $"""
+            一、配置执行方案
+            设置方案名称、总循环次数和轮间等待时间。总循环次数表示全部启用点位按顺序执行多少轮；轮间等待只发生在两轮之间。
+
+            二、采集点击位置
+            点击“采点模式”后，将鼠标移动到目标位置并按 {_captureHotKeyText}。每按一次快捷键会记录一个点位，点位按采集顺序执行。采点完成后再次点击“结束采点”。
+
+            三、调整点位顺序
+            选中表格中的点位，使用“上移”或“下移”调整执行顺序。“启用”未勾选的点位会被跳过，但不会从方案中删除。
+
+            四、设置每个点的动作
+            点击次数：当前点位连续点击多少次。
+            点击间隔：同一点位多次点击之间的等待时间，单位为毫秒。
+            点后等待：当前点位完成全部点击后，进入下一个点位前的等待时间。
+            批量设置：在“点位时间”栏输入点击间隔或点后等待，点击对应的“应用全部”，只会统一修改该列的所有点位。
+            单点例外：批量设置后仍可直接修改某一行，例如将其中一个点的点击间隔改为 200，只对该点生效。
+            新采集点：自动继承“点位时间”栏中的当前数值；修改单行不会反向改变全局默认值。
+
+            五、开始、暂停和停止
+            {_startPauseHotKeyText}：开始任务；运行中按一次暂停，再按一次继续。
+            {_stopHotKeyText}：随时停止倒计时、等待或点击任务。
+            开始前有 3 秒倒计时，可利用这段时间切换到目标窗口。
+
+            六、快捷键设置与冲突
+            点击“设置”可修改采点、开始/暂停和停止快捷键。快捷键必须包含 Ctrl、Alt、Shift 或 Win，三个操作不能重复。保存时若被其他软件占用，程序会保留原快捷键并提示冲突；界面按钮始终可以使用。“恢复默认快捷键”可恢复 Ctrl+Alt+F8、Ctrl+Alt+F9、Ctrl+Alt+F10。
+
+            七、保存与加载
+            “保存”会将当前方案写入 JSON 文件，包括点位顺序、点击参数和显示器信息。“加载”可恢复之前保存的方案。
+
+            八、显示器与屏幕缩放
+            程序使用 Per-Monitor V2 DPI 和屏幕物理坐标处理点击位置。如果显示器分辨率、排列位置、主副屏关系或缩放比例发生变化，原坐标可能不再准确。出现相关提示时，请在当前显示环境下重新采点。
+
+            九、使用建议
+            先用较少循环次数验证点位和等待时间，确认无误后再提高循环次数。执行过程中可随时按 {_stopHotKeyText} 停止。
+            """;
+
+        private Control CreateHeader(AppTheme theme)
         {
             var panel = new Panel
             {
@@ -111,9 +124,15 @@ public sealed partial class MainForm
                 WrapContents = false,
                 BackColor = theme.Window
             };
-            shortcuts.Controls.Add(CreateShortcutLabel("F8 采点", theme.CaptureAccent, theme));
-            shortcuts.Controls.Add(CreateShortcutLabel("F9 开始 / 暂停", theme.Primary, theme));
-            shortcuts.Controls.Add(CreateShortcutLabel("F10 停止", theme.DangerAccent, theme));
+            shortcuts.Controls.Add(
+                CreateShortcutLabel($"{_captureHotKeyText} 采点", theme.CaptureAccent, theme));
+            shortcuts.Controls.Add(
+                CreateShortcutLabel(
+                    $"{_startPauseHotKeyText} 开始 / 暂停",
+                    theme.Primary,
+                    theme));
+            shortcuts.Controls.Add(
+                CreateShortcutLabel($"{_stopHotKeyText} 停止", theme.DangerAccent, theme));
             panel.Controls.Add(shortcuts);
             return panel;
         }
@@ -131,7 +150,7 @@ public sealed partial class MainForm
             };
         }
 
-        private static Control CreateBody(AppTheme theme)
+        private Control CreateBody(AppTheme theme)
         {
             var frame = new Panel
             {
@@ -167,9 +186,10 @@ public sealed partial class MainForm
                          "三、调整点位顺序",
                          "四、设置每个点的动作",
                          "五、开始、暂停和停止",
-                         "六、保存与加载",
-                         "七、显示器与屏幕缩放",
-                         "八、使用建议"
+                         "六、快捷键设置与冲突",
+                         "七、保存与加载",
+                         "八、显示器与屏幕缩放",
+                         "九、使用建议"
                      })
             {
                 var start = body.Text.IndexOf(heading, StringComparison.Ordinal);

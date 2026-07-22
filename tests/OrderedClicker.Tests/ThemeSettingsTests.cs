@@ -1,6 +1,7 @@
 using OrderedClicker.Models;
 using OrderedClicker.Services;
 using OrderedClicker.Theming;
+using OrderedClicker.Core;
 
 namespace OrderedClicker.Tests;
 
@@ -10,6 +11,8 @@ internal static class ThemeSettingsTests
     {
         ThemeCatalogContainsFiveReadableThemes();
         SettingsRoundTripPreservesTheme();
+        SettingsRoundTripPreservesHotKeys();
+        LegacySettingsUseDefaultHotKeys();
         MissingOrInvalidSettingsUseAurora();
     }
 
@@ -63,6 +66,75 @@ internal static class ThemeSettingsTests
             File.WriteAllText(path, "{ invalid json");
             TestAssert.Equal(AppThemeId.Aurora, service.Load().Theme,
                 "设置文件损坏时应使用极光科技主题");
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    private static void SettingsRoundTripPreservesHotKeys()
+    {
+        var directory = CreateTemporaryDirectory();
+        try
+        {
+            var service = new SettingsService(Path.Combine(directory, "settings.json"));
+            var capture = new HotKeyBinding(
+                Keys.F6,
+                ShortcutModifiers.Control | ShortcutModifiers.Shift);
+            service.Save(new AppSettings
+            {
+                Theme = AppThemeId.Emerald,
+                CaptureHotKey = capture,
+                StartPauseHotKey = HotKeyBindingService.DefaultStartPause,
+                StopHotKey = HotKeyBindingService.DefaultStop
+            });
+
+            var loaded = service.Load();
+
+            TestAssert.Equal(capture, loaded.CaptureHotKey, "设置保存后应恢复采点快捷键");
+            TestAssert.Equal(
+                HotKeyBindingService.DefaultStartPause,
+                loaded.StartPauseHotKey,
+                "设置保存后应恢复开始暂停快捷键");
+            TestAssert.Equal(
+                HotKeyBindingService.DefaultStop,
+                loaded.StopHotKey,
+                "设置保存后应恢复停止快捷键");
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    private static void LegacySettingsUseDefaultHotKeys()
+    {
+        var directory = CreateTemporaryDirectory();
+        try
+        {
+            var path = Path.Combine(directory, "settings.json");
+            File.WriteAllText(path, """
+                {
+                  "theme": "light"
+                }
+                """);
+
+            var loaded = new SettingsService(path).Load();
+
+            TestAssert.Equal(AppThemeId.Light, loaded.Theme, "旧设置文件应保留主题");
+            TestAssert.Equal(
+                HotKeyBindingService.DefaultCapture,
+                loaded.CaptureHotKey,
+                "旧设置文件应补充默认采点快捷键");
+            TestAssert.Equal(
+                HotKeyBindingService.DefaultStartPause,
+                loaded.StartPauseHotKey,
+                "旧设置文件应补充默认开始暂停快捷键");
+            TestAssert.Equal(
+                HotKeyBindingService.DefaultStop,
+                loaded.StopHotKey,
+                "旧设置文件应补充默认停止快捷键");
         }
         finally
         {

@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using OrderedClicker.Core;
 using OrderedClicker.Models;
 using OrderedClicker.Theming;
 
@@ -39,6 +40,17 @@ public sealed class SettingsService
             if (settings is null || !Enum.IsDefined(settings.Theme))
             {
                 return new AppSettings();
+            }
+
+            if (!HotKeyBindingService.ValidateSet(
+                    settings.CaptureHotKey,
+                    settings.StartPauseHotKey,
+                    settings.StopHotKey,
+                    out _))
+            {
+                settings.CaptureHotKey = HotKeyBindingService.DefaultCapture;
+                settings.StartPauseHotKey = HotKeyBindingService.DefaultStartPause;
+                settings.StopHotKey = HotKeyBindingService.DefaultStop;
             }
 
             return settings;

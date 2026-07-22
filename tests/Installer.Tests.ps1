@@ -149,6 +149,7 @@ Assert-Contains -Content $buildScript -Expected "有序连点器-视频演示.mp
 Assert-Contains -Content $buildScript -Expected '$PSVersionTable.PSVersion.Major -lt 7' -Name "要求 PowerShell 7"
 Assert-Contains -Content $buildScript -Expected '& (Join-Path $PSScriptRoot "publish.ps1") -Version $Version' -Name "发布版本透传"
 Assert-Contains -Content $buildScript -Expected '"product-staging"' -Name "产品文件先暂存"
+Assert-Contains -Content $buildScript -Expected '$ownedProductPatterns' -Name "清理旧版本产品文件"
 Assert-Contains -Content $buildScript -Expected '$destinationChecksumPath' -Name "外部目录校验文件最后写入"
 Assert-Contains -Content $buildScript -Expected "Assert-SafeRecursivePath" -Name "打包清理路径安全检查"
 Assert-NotContains -Content $buildScript -Unexpected "Inno Setup 6" -Name "只允许 Inno Setup 7"
@@ -156,7 +157,7 @@ Assert-Contains `
     -Content $publishScript `
     -Expected '$unexpectedRuntimeFiles = @(' `
     -Name "严格模式下稳定检查发布文件"
-Assert-Contains -Content $publishScript -Expected '[string]$Version = "1.1.0"' -Name "发布脚本接收版本"
+Assert-Contains -Content $publishScript -Expected '[string]$Version = "1.2.0"' -Name "发布脚本接收版本"
 Assert-Contains -Content $publishScript -Expected '"-p:FileVersion=${Version}.0"' -Name "EXE 文件版本透传"
 Assert-Contains -Content $publishScript -Expected "Assert-SafeRecursivePath" -Name "发布清理路径安全检查"
 Assert-Contains -Content $pathSafety -Expected "[System.IO.FileAttributes]::ReparsePoint" -Name "拒绝重解析点"
