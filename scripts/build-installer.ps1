@@ -118,13 +118,12 @@ else {
 $guideMappings = [ordered]@{
     "有序连点器-使用说明.pdf" = "有序连点器-使用说明.pdf"
     "有序连点器-使用说明.html" = "有序连点器-使用说明.html"
-    "有序连点器-完整操作教程.mp4" = "有序连点器-视频演示.mp4"
 }
 $resolvedGuideFiles = [System.Collections.Generic.List[object]]::new()
 foreach ($sourceName in $guideMappings.Keys) {
     $source = Join-Path $resolvedGuideSourceDirectory $sourceName
     if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
-        throw "缺少指导文件：$source。视频属于生成产物，请先生成完整教程或使用 -GuideSourceDirectory 指定成品目录。"
+        throw "缺少指导文件：$source。请生成 PDF/HTML 使用说明，或使用 -GuideSourceDirectory 指定成品目录。"
     }
 
     $resolvedGuideFiles.Add([pscustomobject]@{
@@ -198,7 +197,7 @@ if (-not (Test-Path -LiteralPath $installerPath -PathType Leaf)) {
 }
 
 $stagedProductFiles = [System.Collections.Generic.List[string]]::new()
-foreach ($packagePath in @($installerPath, $portablePath)) {
+foreach ($packagePath in @($installerPath)) {
     $destination = Join-Path $productStagingDirectory ([System.IO.Path]::GetFileName($packagePath))
     Copy-Item -LiteralPath $packagePath -Destination $destination -Force
     $stagedProductFiles.Add($destination)
@@ -209,16 +208,6 @@ foreach ($guideFile in $resolvedGuideFiles) {
     Copy-Item -LiteralPath $guideFile.Source -Destination $destination -Force
     $stagedProductFiles.Add($destination)
 }
-
-$stagedChecksumPath = Join-Path $productStagingDirectory "SHA256SUMS.txt"
-$checksumLines = foreach ($file in $stagedProductFiles) {
-    $hash = Get-FileHash -LiteralPath $file -Algorithm SHA256
-    "{0}  {1}" -f $hash.Hash.ToLowerInvariant(), [System.IO.Path]::GetFileName($file)
-}
-[System.IO.File]::WriteAllLines(
-    $stagedChecksumPath,
-    $checksumLines,
-    [System.Text.UTF8Encoding]::new($false))
 
 New-Item -ItemType Directory -Force -Path $resolvedProductDirectory | Out-Null
 $deliveryStagingDirectory = Join-Path `
@@ -237,7 +226,6 @@ $ownedProductPatterns = @(
     "有序连点器-视频演示.mp4",
     "SHA256SUMS.txt"
 )
-$destinationChecksumPath = Join-Path $resolvedProductDirectory "SHA256SUMS.txt"
 try {
     $deliveryFiles = [System.Collections.Generic.List[string]]::new()
     foreach ($stagedFile in $stagedProductFiles) {
@@ -247,9 +235,6 @@ try {
         Copy-Item -LiteralPath $stagedFile -Destination $destination -Force
         $deliveryFiles.Add($destination)
     }
-
-    $deliveryChecksumPath = Join-Path $safeDeliveryStagingDirectory "SHA256SUMS.txt"
-    Copy-Item -LiteralPath $stagedChecksumPath -Destination $deliveryChecksumPath -Force
 
     foreach ($index in 0..($stagedProductFiles.Count - 1)) {
         $sourceHash = (Get-FileHash -LiteralPath $stagedProductFiles[$index] -Algorithm SHA256).Hash
@@ -265,10 +250,6 @@ try {
             ([System.IO.Path]::GetFileName($deliveryFile))
         Move-Item -LiteralPath $deliveryFile -Destination $destination -Force
     }
-    Move-Item `
-        -LiteralPath $deliveryChecksumPath `
-        -Destination $destinationChecksumPath `
-        -Force
 
     $currentProductNames = [System.Collections.Generic.HashSet[string]]::new(
         [System.StringComparer]::OrdinalIgnoreCase)
@@ -277,7 +258,6 @@ try {
     }) {
         $currentProductNames.Add($name) | Out-Null
     }
-    $currentProductNames.Add("SHA256SUMS.txt") | Out-Null
 
     foreach ($pattern in $ownedProductPatterns) {
         Get-ChildItem -LiteralPath $resolvedProductDirectory -File -Filter $pattern |
@@ -297,5 +277,5 @@ finally {
 Write-Host ""
 Write-Host "安装版构建完成：" -ForegroundColor Green
 Write-Host "  安装包：$(Join-Path $resolvedProductDirectory $installerFileName)"
-Write-Host "  便携版：$(Join-Path $resolvedProductDirectory $portableFileName)"
-Write-Host "  校验值：$destinationChecksumPath"
+Write-Host "  PDF：$(Join-Path $resolvedProductDirectory '有序连点器-使用说明.pdf')"
+Write-Host "  HTML：$(Join-Path $resolvedProductDirectory '有序连点器-使用说明.html')"

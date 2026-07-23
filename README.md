@@ -6,10 +6,9 @@ Windows 10/11 x64 免费开源桌面连点器，无授权码和联网验证。�
 
 ## 下载与运行
 
-普通用户请从仓库的 **Releases** 页面选择以下版本：
+普通用户请从仓库的 **Releases** 页面下载安装版：
 
 - 安装版：`ordered-clicker-setup-v1.3.1.exe`，双击后按向导安装，适合日常使用。
-- 便携版：`ordered-clicker-portable-v1.3.1.zip`，解压后直接运行，适合临时使用。
 
 安装版默认安装到当前用户目录，不需要管理员权限，并可创建开始菜单和桌面快捷方式。
 
@@ -30,7 +29,8 @@ Windows 10/11 x64 免费开源桌面连点器，无授权码和联网验证。�
 
 - `有序连点器-使用说明.pdf`
 - `有序连点器-使用说明.html`
-- `有序连点器-视频演示.mp4`
+
+最终产品目录只包含安装版 EXE、PDF 使用说明和 HTML 使用说明。便携包属于内部构建产物，不放入最终交付目录。
 
 ## 热键
 
@@ -79,7 +79,7 @@ Windows 10/11 x64 免费开源桌面连点器，无授权码和联网验证。�
 ## 权限和限制
 
 - 普通权限程序不能可靠控制以管理员身份运行的目标程序。需要时请让两者使用相同权限。
-- 当前安装包尚未进行商业代码签名，Windows 可能显示“未知发布者”或 SmartScreen 提示。请仅从本仓库 Releases 下载，并使用随包提供的 `SHA256SUMS.txt` 核对文件。
+- 当前安装包尚未进行商业代码签名，Windows 可能显示“未知发布者”或 SmartScreen 提示。请仅从本仓库 Releases 下载。
 - 游戏、反作弊程序、远程桌面或安全软件可能屏蔽模拟输入。
 - 运行时用户主动移动鼠标可能影响点击结果，默认按 `F8` 可紧急停止。
 
@@ -87,15 +87,14 @@ Windows 10/11 x64 免费开源桌面连点器，无授权码和联网验证。�
 
 源码构建需要 Windows 10/11 x64、PowerShell 7 和 .NET 10 SDK。构建脚本会优先使用 `.tools\dotnet` 下的本地 SDK；如果该目录不存在，则使用系统安装的 `dotnet`。生成安装版还需要 Inno Setup 7。
 
-完整产品包还需要指导成品目录中存在以下三个文件：
+完整产品包需要指导成品目录中存在以下两个文件：
 
 ```text
 有序连点器-使用说明.pdf
 有序连点器-使用说明.html
-有序连点器-完整操作教程.mp4
 ```
 
-视频属于本地生成产物，不提交到 Git。干净检出需要先按 `scripts/guide` 中的生成脚本制作视频，或通过 `-GuideSourceDirectory` 指向已有成品目录。
+视频教程可继续保留在源码工作目录中，但不属于本次最终产品交付物。
 
 ```powershell
 .\scripts\dotnet.ps1 build .\OrderedClicker.sln -c Release '-m:1'
@@ -107,4 +106,4 @@ pwsh -NoProfile -File .\scripts\build-installer.ps1 `
   -GuideSourceDirectory "D:\专用工具\连点器\操作指导"
 ```
 
-应用发布结果位于 `publish\win-x64`，安装器中间产物位于 `publish\packages`。可执行文件和视频成品不提交到源码仓库，统一通过 GitHub Releases 分发。
+应用发布结果位于 `publish\win-x64`，安装器和便携包中间产物位于 `publish\packages`。最终产品目录与 GitHub Release 只发布安装版 EXE、PDF 和 HTML。

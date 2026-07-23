@@ -142,15 +142,25 @@ Assert-Contains `
     -Name "产品版本不附加提交哈希"
 Assert-Contains -Content $buildScript -Expected "publish.ps1" -Name "复用发布脚本"
 Assert-Contains -Content $buildScript -Expected "Compress-Archive" -Name "生成便携版"
-Assert-Contains -Content $buildScript -Expected "Get-FileHash" -Name "生成 SHA-256"
+Assert-Contains -Content $buildScript -Expected "Get-FileHash" -Name "校验交付复制"
 Assert-Contains -Content $buildScript -Expected "有序连点器-使用说明.pdf" -Name "复制 PDF"
 Assert-Contains -Content $buildScript -Expected "有序连点器-使用说明.html" -Name "复制 HTML"
-Assert-Contains -Content $buildScript -Expected "有序连点器-视频演示.mp4" -Name "复制视频"
+Assert-NotContains `
+    -Content $buildScript `
+    -Unexpected '"有序连点器-完整操作教程.mp4" =' `
+    -Name "视频不再作为交付依赖"
 Assert-Contains -Content $buildScript -Expected '$PSVersionTable.PSVersion.Major -lt 7' -Name "要求 PowerShell 7"
 Assert-Contains -Content $buildScript -Expected '& (Join-Path $PSScriptRoot "publish.ps1") -Version $Version' -Name "发布版本透传"
 Assert-Contains -Content $buildScript -Expected '"product-staging"' -Name "产品文件先暂存"
 Assert-Contains -Content $buildScript -Expected '$ownedProductPatterns' -Name "清理旧版本产品文件"
-Assert-Contains -Content $buildScript -Expected '$destinationChecksumPath' -Name "外部目录校验文件最后写入"
+Assert-Contains `
+    -Content $buildScript `
+    -Expected 'foreach ($packagePath in @($installerPath))' `
+    -Name "产品目录只复制安装包"
+Assert-NotContains `
+    -Content $buildScript `
+    -Unexpected '$currentProductNames.Add("SHA256SUMS.txt")' `
+    -Name "产品目录不生成校验文件"
 Assert-Contains -Content $buildScript -Expected "Assert-SafeRecursivePath" -Name "打包清理路径安全检查"
 Assert-NotContains -Content $buildScript -Unexpected "Inno Setup 6" -Name "只允许 Inno Setup 7"
 Assert-Contains `
@@ -165,7 +175,7 @@ Assert-Contains -Content $publishScript -Expected '"-p:FileVersion=${Version}.0"
 Assert-Contains -Content $publishScript -Expected "Assert-SafeRecursivePath" -Name "发布清理路径安全检查"
 Assert-Contains -Content $pathSafety -Expected "[System.IO.FileAttributes]::ReparsePoint" -Name "拒绝重解析点"
 Assert-Contains -Content $readme -Expected "PowerShell 7" -Name "构建依赖说明"
-Assert-Contains -Content $readme -Expected "有序连点器-完整操作教程.mp4" -Name "视频生成产物说明"
+Assert-Contains -Content $readme -Expected "最终产品目录只包含" -Name "最小交付说明"
 
 $guidePreflightIndex = $buildScript.IndexOf("缺少指导文件", [StringComparison]::Ordinal)
 $publishIndex = $buildScript.IndexOf("发布 Windows x64 自包含应用", [StringComparison]::Ordinal)
