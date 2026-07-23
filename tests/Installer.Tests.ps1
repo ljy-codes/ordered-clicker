@@ -157,10 +157,10 @@ Assert-Contains `
     -Content $publishScript `
     -Expected '$unexpectedRuntimeFiles = @(' `
     -Name "严格模式下稳定检查发布文件"
-Assert-Contains -Content $publishScript -Expected '[string]$Version = "1.3.0"' -Name "发布脚本接收版本"
-Assert-Contains -Content $project -Expected "<Version>1.3.0</Version>" -Name "项目版本为 1.3.0"
-Assert-Contains -Content $installer -Expected '#define AppVersion "1.3.0"' -Name "安装器默认版本为 1.3.0"
-Assert-Contains -Content $buildScript -Expected '[string]$Version = "1.3.0"' -Name "构建脚本默认版本为 1.3.0"
+Assert-Contains -Content $publishScript -Expected '[string]$Version = "1.3.1"' -Name "发布脚本接收版本"
+Assert-Contains -Content $project -Expected "<Version>1.3.1</Version>" -Name "项目版本为 1.3.1"
+Assert-Contains -Content $installer -Expected '#define AppVersion "1.3.1"' -Name "安装器默认版本为 1.3.1"
+Assert-Contains -Content $buildScript -Expected '[string]$Version = "1.3.1"' -Name "构建脚本默认版本为 1.3.1"
 Assert-Contains -Content $publishScript -Expected '"-p:FileVersion=${Version}.0"' -Name "EXE 文件版本透传"
 Assert-Contains -Content $publishScript -Expected "Assert-SafeRecursivePath" -Name "发布清理路径安全检查"
 Assert-Contains -Content $pathSafety -Expected "[System.IO.FileAttributes]::ReparsePoint" -Name "拒绝重解析点"

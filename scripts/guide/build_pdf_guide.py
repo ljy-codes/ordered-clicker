@@ -243,7 +243,7 @@ def draw_page(canvas, doc) -> None:
     canvas.line(18 * mm, 15 * mm, width - 18 * mm, 15 * mm)
     canvas.setFont("GuideCN", 7.5)
     canvas.setFillColor(MUTED)
-    canvas.drawString(18 * mm, 9.5 * mm, "有序连点器 1.3.0 · 零基础使用说明")
+    canvas.drawString(18 * mm, 9.5 * mm, "有序连点器 1.3.1 · 零基础使用说明")
     canvas.drawRightString(width - 18 * mm, 9.5 * mm, f"第 {doc.page} 页")
     canvas.restoreState()
 
@@ -272,7 +272,7 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
         guide_table(
             [
                 ["适用用户", "核心能力", "文档版本"],
-                ["零基础普通用户", "云桌面、多点长流程、断点继续、循环执行", "1.3 · 2026-07-23"],
+                ["零基础普通用户", "云桌面、多点长流程、断点继续、循环执行", "1.3.1 · 2026-07-23"],
             ],
             [42 * mm, 88 * mm, 42 * mm],
             style_map,
@@ -297,7 +297,7 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
                 ["3", "直接修改特殊点位所在行。", "该行成为例外，不影响其他点。"],
                 ["4", "设置总循环次数和轮间等待。", "整组点位按顺序重复执行。"],
                 ["5", "核对计划点次和计划点击数，按 F7 开始；按 F8 停止。", "防止长流程提前结束。"],
-                ["6", "确认无误后保存或另存为方案。", "下次可直接加载复用。"],
+                ["6", "确认无误后保存、另存为或导出方案。", "下次可导入方案副本复用。"],
             ],
             [16 * mm, 100 * mm, 56 * mm],
             style_map,
@@ -374,7 +374,7 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
         guide_table(
             [
                 ["区域", "作用"],
-                ["方案区", "设置方案名称、总循环次数和轮间等待，并保存、另存为或加载。"],
+                ["方案区", "设置方案名称、总循环次数和轮间等待，并保存、另存为、导入或导出。"],
                 ["云桌面区", "校准远程画面区域，并设置是否等待画面稳定。"],
                 ["点位时间", "设置全局点击间隔、点后等待，并通过“应用全部”批量更新。"],
                 ["点位表", "查看启用状态、顺序、坐标、点击次数、时间和显示器。"],
@@ -534,7 +534,7 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
     )
 
     story.append(PageBreak())
-    section_header(story, "07", "保存、另存为与加载", "方案文件保存点位、单点参数、云桌面区域和全局时间默认值。", style_map)
+    section_header(story, "07", "保存、另存为、导入与导出", "方案文件保存点位、单点参数、云桌面区域和全局时间默认值。", style_map)
     heading(story, "保存内容", style_map)
     bullets(
         story,
@@ -547,13 +547,25 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
         ],
         style_map,
     )
-    heading(story, "加载后的检查", style_map)
+    heading(story, "四种文件操作", style_map)
+    bullets(
+        story,
+        [
+            "保存：覆盖当前已绑定的方案；没有绑定路径时保存到程序默认方案目录。",
+            "另存为：选择新的 JSON 路径，并将其设为后续“保存”的目标。",
+            "导入方案：校验文件并显示摘要，确认后作为本机副本；不会覆盖来源文件。",
+            "导出方案：生成备份或分享文件，不改变当前方案的保存位置。",
+            "导入失败或取消时，当前点位和设置保持不变。",
+        ],
+        style_map,
+    )
+    heading(story, "导入后的检查", style_map)
     bullets(
         story,
         [
             "先确认点位数量、顺序、启用状态和时间参数。",
             "显示器环境没有变化时，仍建议先执行一轮测试。",
-            "显示器排列、分辨率、缩放或目标窗口变化后，应重新采点。",
+            "显示器排列、分辨率、缩放或目标窗口变化后，应重新校准云桌面区域或重新采点。",
             "不要手工删除 JSON 字段或加入注释，以免文件损坏。",
         ],
         style_map,
@@ -670,7 +682,7 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
                 ["时间输入后恢复", "点击间隔至少 10 ms；输入后点击其他单元格完成编辑。"],
                 ["应用全部后特殊值消失", "这是正常批量覆盖；请在批量应用后再设置单行例外。"],
                 ["新点时间不符合预期", "检查“点位时间”栏；新采集点继承当前全局值。"],
-                ["加载方案失败", "选择软件保存的 JSON 文件，不要手工破坏格式。"],
+                ["导入方案失败", "选择软件保存或导出的 JSON 文件，不要手工破坏格式。"],
                 ["安全软件不响应", "不要绕过安全限制，改用目标程序允许的方式。"],
             ],
             [53 * mm, 119 * mm],
@@ -741,8 +753,8 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
         guide_table(
             [
                 ["文件", "用途"],
-                ["ordered-clicker-setup-v1.3.0.exe", "Windows 安装版。"],
-                ["ordered-clicker-portable-v1.3.0.zip", "免安装便携版。"],
+                ["ordered-clicker-setup-v1.3.1.exe", "Windows 安装版。"],
+                ["ordered-clicker-portable-v1.3.1.zip", "免安装便携版。"],
                 ["有序连点器-使用说明.pdf", "当前离线说明书。"],
                 ["有序连点器-使用说明.html", "可搜索、可放大图片的网页说明。"],
                 ["有序连点器-视频演示.mp4", "完整语音操作演示，视频内容沿用上一版。"],
@@ -755,7 +767,7 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
     callout(
         story,
         "版本说明：",
-        "1.3.0 新增云桌面区域校准、相对坐标、画面稳定等待、执行计划计数、断点继续、另存为和 F6/F7/F8 简洁快捷键。",
+        "1.3.1 新增明确的方案导入与导出流程；导入为副本且先校验确认，导出不改变当前保存位置，并保留另存为功能。",
         style_map,
         "#19c7d9",
     )
@@ -776,7 +788,7 @@ def main() -> None:
         bottomMargin=20 * mm,
         title="有序连点器使用说明",
         author="ljy-codes",
-        subject="有序连点器 1.3.0 零基础操作指导",
+        subject="有序连点器 1.3.1 零基础操作指导",
     )
     frame = Frame(
         doc.leftMargin,

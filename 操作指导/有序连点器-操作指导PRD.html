@@ -866,7 +866,7 @@
       <a href="#quick-start">04 十二步快速入门</a>
       <a href="#parameters">05 参数详细解释</a>
       <a href="#execution">06 开始、暂停与停止</a>
-      <a href="#profiles">07 保存与加载方案</a>
+      <a href="#profiles">07 保存、导入与导出</a>
       <a href="#themes">08 主题与快捷键设置</a>
       <a href="#display">09 DPI 与多显示器</a>
       <a href="#troubleshooting">10 常见问题</a>
@@ -1261,14 +1261,14 @@
           <article class="step">
             <div class="step-index">11</div>
             <div class="step-body">
-              <h3>保存并重新加载方案</h3>
+              <h3>保存并导入方案副本</h3>
               <div class="step-fields">
                 <div class="step-field"><strong>操作目的</strong><span>下次直接复用相同点位和参数。</span></div>
-                <div class="step-field"><strong>操作位置</strong><span>顶部“保存”和“加载”按钮。</span></div>
-                <div class="step-field"><strong>操作步骤</strong><span>保存方案，清空点位，再点击加载并选择保存的 JSON 文件。</span></div>
+                <div class="step-field"><strong>操作位置</strong><span>顶部“保存”“另存为”“导入方案”和“导出方案”按钮。</span></div>
+                <div class="step-field"><strong>操作步骤</strong><span>先另存为或导出方案，清空点位，再点击导入方案并选择该 JSON 文件。</span></div>
                 <div class="step-field"><strong>正确结果</strong><span>三行点位和全部参数恢复。</span></div>
-                <div class="step-field"><strong>注意事项</strong><span>显示器环境改变后，即使加载成功也建议重新采点。</span></div>
-                <div class="step-field"><strong>常见错误</strong><span>直接编辑 JSON 导致格式损坏，加载失败。</span></div>
+                <div class="step-field"><strong>注意事项</strong><span>显示器环境改变后，即使导入成功也建议重新校准或采点。</span></div>
+                <div class="step-field"><strong>常见错误</strong><span>直接编辑 JSON 导致格式损坏，导入失败。</span></div>
               </div>
             </div>
           </article>
@@ -1403,7 +1403,7 @@
         <div class="section-heading">
           <span class="section-number">07</span>
           <div>
-            <h2>保存与加载方案</h2>
+            <h2>保存、导入与导出方案</h2>
             <p>保存方案可以减少重复配置，但不能消除显示环境变化带来的坐标风险。</p>
           </div>
         </div>
@@ -1417,10 +1417,23 @@
           </p>
         </div>
         <div class="panel">
-          <h3>加载方案</h3>
+          <h3>另存为</h3>
           <p>
-            点击“加载”，选择之前保存的 JSON 文件。加载成功后先检查点位数量、启用状态和参数，
-            再使用一轮测试确认坐标。加载损坏文件时，程序会提示错误，不会覆盖当前点位。
+            点击“另存为”可选择新的 JSON 路径，保存成功后该文件会成为后续“保存”的目标。
+          </p>
+        </div>
+        <div class="panel">
+          <h3>导入方案</h3>
+          <p>
+            点击“导入方案”，选择 JSON 文件并检查名称、点位数和循环次数摘要。确认后导入为副本，
+            不会覆盖来源文件；导入失败或取消时，当前点位和设置保持不变。
+          </p>
+        </div>
+        <div class="panel">
+          <h3>导出方案</h3>
+          <p>
+            点击“导出方案”可将当前完整方案写入指定 JSON 文件，用于备份或分享。
+            导出不会改变当前方案的保存位置。
           </p>
         </div>
         <div class="warning">
@@ -1555,8 +1568,8 @@
             <p>只输入有效整数。点击次数必须大于零，等待时间不能是负数；输入后单击表格其他位置完成编辑。</p>
           </article>
           <article class="faq">
-            <strong>加载方案失败</strong>
-            <p>确认选择的是连点器保存的 JSON 文件。不要手工删除字段或加入注释；损坏文件需要重新保存。</p>
+            <strong>导入方案失败</strong>
+            <p>确认选择的是连点器保存或导出的 JSON 文件。不要手工删除字段或加入注释；损坏文件需要重新导出。</p>
           </article>
           <article class="faq">
             <strong>副屏坐标为负数</strong>
@@ -1639,7 +1652,7 @@
       </section>
 
       <div class="footer-note">
-        文档版本：1.2 · 更新日期：2026-07-22 ·
+        文档版本：1.3.1 · 更新日期：2026-07-23 ·
         本文档只提供软件操作说明，不建议将自动点击用于高风险或不可撤销操作。
       </div>
     </main>

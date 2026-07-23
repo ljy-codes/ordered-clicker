@@ -1,15 +1,15 @@
 # 有序连点器
 
-Windows 10/11 x64 免费开源桌面连点器，无授权码和联网验证。支持有序点位、批量时间设置、单点独立参数、总循环次数、可配置全局热键、云桌面相对坐标、长流程计数校验、断点继续、DPI 缩放及多显示器。
+Windows 10/11 x64 免费开源桌面连点器，无授权码和联网验证。支持有序点位、批量时间设置、单点独立参数、总循环次数、方案文件保存/另存为/导入/导出、可配置全局热键、云桌面相对坐标、长流程计数校验、断点继续、DPI 缩放及多显示器。
 
-![有序连点器主界面](artifacts/ordered-clicker-ui-v1.3.0.png)
+![有序连点器主界面](artifacts/ordered-clicker-ui-v1.3.1.png)
 
 ## 下载与运行
 
 普通用户请从仓库的 **Releases** 页面选择以下版本：
 
-- 安装版：`ordered-clicker-setup-v1.3.0.exe`，双击后按向导安装，适合日常使用。
-- 便携版：`ordered-clicker-portable-v1.3.0.zip`，解压后直接运行，适合临时使用。
+- 安装版：`ordered-clicker-setup-v1.3.1.exe`，双击后按向导安装，适合日常使用。
+- 便携版：`ordered-clicker-portable-v1.3.1.zip`，解压后直接运行，适合临时使用。
 
 安装版默认安装到当前用户目录，不需要管理员权限，并可创建开始菜单和桌面快捷方式。
 
@@ -58,7 +58,7 @@ Windows 10/11 x64 免费开源桌面连点器，无授权码和联网验证。�
 %LocalAppData%\OrderedClicker\profiles
 ```
 
-“保存”覆盖当前方案，“另存为”可选择任意 JSON 路径，“加载”恢复已有方案。加载损坏配置时程序会显示错误，不会覆盖现有点位。
+“保存”覆盖当前已绑定的方案；“另存为”选择新的 JSON 路径，并将其设为后续保存目标；“导入方案”会先校验并要求确认，导入后作为本机副本，不覆盖来源文件；“导出方案”将当前完整方案写入指定 JSON 文件，但不改变当前保存位置。导入损坏或不兼容的配置时程序会显示错误，不会覆盖现有点位。
 
 界面主题和快捷键设置保存到：
 
@@ -102,7 +102,7 @@ Windows 10/11 x64 免费开源桌面连点器，无授权码和联网验证。�
 .\scripts\dotnet.ps1 run --project .\tests\OrderedClicker.Tests\OrderedClicker.Tests.csproj -c Release
 .\scripts\publish.ps1
 pwsh -NoProfile -File .\scripts\build-installer.ps1 `
-  -Version 1.3.0 `
+  -Version 1.3.1 `
   -ProductDirectory "D:\专用工具\连接器产品" `
   -GuideSourceDirectory "D:\专用工具\连点器\操作指导"
 ```
