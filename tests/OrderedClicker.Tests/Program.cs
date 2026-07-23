@@ -52,6 +52,11 @@ internal static class Program
                 VirtualScreenCoordinateServiceTests.Run();
                 return Task.CompletedTask;
             }),
+            ("ExecutionPlanService", () =>
+            {
+                ExecutionPlanServiceTests.Run();
+                return Task.CompletedTask;
+            }),
             ("PointTimingService", () =>
             {
                 PointTimingServiceTests.Run();
