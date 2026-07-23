@@ -243,7 +243,7 @@ def draw_page(canvas, doc) -> None:
     canvas.line(18 * mm, 15 * mm, width - 18 * mm, 15 * mm)
     canvas.setFont("GuideCN", 7.5)
     canvas.setFillColor(MUTED)
-    canvas.drawString(18 * mm, 9.5 * mm, "有序连点器 1.2.0 · 零基础使用说明")
+    canvas.drawString(18 * mm, 9.5 * mm, "有序连点器 1.3.0 · 零基础使用说明")
     canvas.drawRightString(width - 18 * mm, 9.5 * mm, f"第 {doc.page} 页")
     canvas.restoreState()
 
@@ -272,7 +272,7 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
         guide_table(
             [
                 ["适用用户", "核心能力", "文档版本"],
-                ["零基础普通用户", "多点有序点击、批量时间、单点例外、循环执行", "1.2 · 2026-07-22"],
+                ["零基础普通用户", "云桌面、多点长流程、断点继续、循环执行", "1.3 · 2026-07-23"],
             ],
             [42 * mm, 88 * mm, 42 * mm],
             style_map,
@@ -281,7 +281,7 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
     callout(
         story,
         "安全提醒：",
-        "自动点击会真实控制鼠标。首次使用只设置 1 轮，并在安全空白页面测试；任何时候按 Ctrl+Alt+F10 停止。",
+        "自动点击会真实控制鼠标。首次使用只设置 1 轮，并在安全空白页面测试；任何时候按 F8 停止。",
         style_map,
         "#ff5b6e",
     )
@@ -292,12 +292,12 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
         guide_table(
             [
                 ["步骤", "操作", "结果"],
-                ["1", "打开采点模式，将鼠标移到目标位置后按 Ctrl+Alt+F8。", "按采集顺序新增点位。"],
+                ["1", "打开采点模式，将鼠标移到目标位置后按 F6。", "按采集顺序新增点位。"],
                 ["2", "在“点位时间”栏填写时间，并点击对应“应用全部”。", "所有点统一获得该列时间。"],
                 ["3", "直接修改特殊点位所在行。", "该行成为例外，不影响其他点。"],
                 ["4", "设置总循环次数和轮间等待。", "整组点位按顺序重复执行。"],
-                ["5", "按 Ctrl+Alt+F9 开始；按 Ctrl+Alt+F9 暂停/继续；按 Ctrl+Alt+F10 停止。", "随时控制任务。"],
-                ["6", "确认无误后保存方案。", "下次可直接加载复用。"],
+                ["5", "核对计划点次和计划点击数，按 F7 开始；按 F8 停止。", "防止长流程提前结束。"],
+                ["6", "确认无误后保存或另存为方案。", "下次可直接加载复用。"],
             ],
             [16 * mm, 100 * mm, 56 * mm],
             style_map,
@@ -308,9 +308,9 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
         guide_table(
             [
                 ["快捷键", "作用", "什么时候用"],
-                ["Ctrl+Alt+F8", "采集当前鼠标位置", "只在采点模式开启时"],
-                ["Ctrl+Alt+F9", "开始、暂停、继续", "配置完成后或运行过程中"],
-                ["Ctrl+Alt+F10", "立即停止", "发现误点风险或窗口变化时"],
+                ["F6", "采集当前鼠标位置", "采点或云桌面区域校准时"],
+                ["F7", "开始、暂停、继续", "配置完成后或运行过程中"],
+                ["F8", "立即停止", "发现误点风险或窗口变化时"],
             ],
             [26 * mm, 58 * mm, 88 * mm],
             style_map,
@@ -329,6 +329,7 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
             "新采集点自动继承当前全局点击间隔和点后等待。",
             "全部启用点执行完一遍算一轮，可设置总循环次数和轮间等待。",
             "支持五套主题、方案保存、DPI 缩放与多显示器环境检查。",
+            "支持浏览器云桌面区域校准、相对坐标、画面稳定等待和断点继续。",
         ],
         style_map,
     )
@@ -343,7 +344,7 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
             "使用 Windows 10 或 Windows 11 x64。",
             "普通权限的连点器不能可靠控制以管理员身份运行的目标程序。",
             "如目标程序以管理员身份运行，请关闭连点器后也以管理员身份启动。",
-            "默认使用 Ctrl+Alt+F8、Ctrl+Alt+F9、Ctrl+Alt+F10；如有冲突可在设置中修改。",
+            "默认使用 F6、F7、F8；设置中可切换兼容模式或直接自定义。",
         ],
         style_map,
     )
@@ -373,7 +374,8 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
         guide_table(
             [
                 ["区域", "作用"],
-                ["方案区", "设置方案名称、总循环次数和轮间等待，并保存或加载。"],
+                ["方案区", "设置方案名称、总循环次数和轮间等待，并保存、另存为或加载。"],
+                ["云桌面区", "校准远程画面区域，并设置是否等待画面稳定。"],
                 ["点位时间", "设置全局点击间隔、点后等待，并通过“应用全部”批量更新。"],
                 ["点位表", "查看启用状态、顺序、坐标、点击次数、时间和显示器。"],
                 ["点位操作栏", "采点、上移、下移、删除、清空、设置和使用说明。"],
@@ -400,9 +402,9 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
     bullets(
         story,
         [
-            "点击“采点模式 (Ctrl+Alt+F8)”，按钮会变成“结束采点”。",
-            "把鼠标移到第一个目标位置中心，按一次 Ctrl+Alt+F8。",
-            "依次移动到第二、第三个位置，每个位置按一次 Ctrl+Alt+F8。",
+            "点击“采点模式 (F6)”，按钮会变成“结束采点”。",
+            "把鼠标移到第一个目标位置中心，按一次 F6。",
+            "依次移动到第二、第三个位置，每个位置按一次 F6。",
             "点位按采集顺序出现在表格中。",
         ],
         style_map,
@@ -411,7 +413,7 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
     bullets(
         story,
         [
-            "点击“结束采点”，防止后续误按 Ctrl+Alt+F8 添加多余点位。",
+            "点击“结束采点”，防止后续误按 F6 添加多余点位。",
             "检查表格是否有三行，以及坐标和显示器信息是否完整。",
             "顺序错误时，选中一行后使用“上移”或“下移”。",
         ],
@@ -446,8 +448,8 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
         story,
         [
             "总循环次数先填 1，确认无误后可改为 2；轮间等待示例填 1500。",
-            "按 Ctrl+Alt+F9 后有 3 秒倒计时，利用这段时间切换到目标窗口。",
-            "运行中按 Ctrl+Alt+F9 暂停或继续，按 Ctrl+Alt+F10 随时停止。",
+            "开始前核对启用行、禁用行、计划点次和计划点击数，再按 F7。",
+            "确认后有 3 秒倒计时；运行中按 F7 暂停或继续，按 F8 随时停止。",
             "两轮结束后，三个点的总点击次数应分别为 4、2、6。",
         ],
         style_map,
@@ -514,10 +516,10 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
         guide_table(
             [
                 ["状态", "操作", "程序行为"],
-                ["空闲", "按 Ctrl+Alt+F9 或点击开始", "进入 3 秒倒计时，然后执行。"],
-                ["运行中", "按 Ctrl+Alt+F9", "暂停当前倒计时、等待或点位流程。"],
-                ["已暂停", "再次按 Ctrl+Alt+F9", "从暂停位置继续。"],
-                ["任意执行状态", "按 Ctrl+Alt+F10", "终止任务并回到就绪。"],
+                ["空闲", "按 F7 或点击开始", "先确认执行计划，再进入 3 秒倒计时。"],
+                ["运行中", "按 F7", "暂停当前等待或点位流程。"],
+                ["已暂停", "再次按 F7", "从暂停位置继续。"],
+                ["任意执行状态", "按 F8", "停止并保留可继续的断点。"],
             ],
             [34 * mm, 52 * mm, 86 * mm],
             style_map,
@@ -526,13 +528,13 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
     callout(
         story,
         "立即停止：",
-        "发现目标窗口移动、弹窗遮挡、页面内容变化或误点风险时，优先按 Ctrl+Alt+F10。",
+        "发现目标窗口移动、弹窗遮挡、页面内容变化或误点风险时，优先按 F8。",
         style_map,
         "#ff5b6e",
     )
 
     story.append(PageBreak())
-    section_header(story, "07", "保存与加载方案", "方案文件保存点位、单点参数和全局时间默认值。", style_map)
+    section_header(story, "07", "保存、另存为与加载", "方案文件保存点位、单点参数、云桌面区域和全局时间默认值。", style_map)
     heading(story, "保存内容", style_map)
     bullets(
         story,
@@ -541,6 +543,7 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
             "每个点的启用状态、顺序、坐标、点击次数、点击间隔和点后等待。",
             "全局点击间隔和全局点后等待默认值。",
             "采点时的显示器信息，用于开始前检测环境变化。",
+            "云桌面区域、相对坐标和画面稳定等待设置。",
         ],
         style_map,
     )
@@ -572,8 +575,8 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
             "内置主题：极光科技、经典深色、海洋蓝、翡翠绿、明亮模式。",
             "点击主题卡片立即预览；点击保存后下次启动自动恢复。",
             "快捷键输入框获得焦点后，直接按下新的组合键即可记录。",
-            "快捷键必须包含 Ctrl、Alt、Shift 或 Win，三个操作不能重复。",
-            "点击“恢复默认快捷键”可恢复 Ctrl+Alt+F8、Ctrl+Alt+F9、Ctrl+Alt+F10。",
+            "无修饰键只允许 F6 到 F12；组合键可使用 Ctrl、Alt、Shift 或 Win。",
+            "“简洁模式”使用 F6/F7/F8；“兼容模式”使用 Ctrl+Alt+F8/F9/F10。",
             "保存时若新快捷键被占用，程序会提示冲突并恢复修改前仍可用的快捷键。",
             "点击取消、关闭弹窗或按 Esc，会撤销本次未保存的主题和快捷键修改。",
             "主界面的“? 使用说明”可随时打开内置帮助。",
@@ -590,7 +593,42 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
     )
 
     story.append(PageBreak())
-    section_header(story, "09", "DPI、屏幕缩放与多显示器", "程序使用物理屏幕坐标，并启用 Per-Monitor V2 DPI 感知。", style_map)
+    section_header(story, "09", "云桌面增强与复杂流程", "浏览器内远程桌面建议使用区域相对坐标和画面稳定等待。", style_map)
+    heading(story, "两点校准", style_map)
+    bullets(
+        story,
+        [
+            "勾选“云桌面增强”，点击“校准云桌面区域”。",
+            "将鼠标移到远程画面的左上角按 F6，再移到右下角按 F6。",
+            "校准完成后再采点，点位会保存为区域内相对坐标。",
+            "浏览器窗口移动或改变大小后，只需重新校准区域，不必重新采集全部点位。",
+        ],
+        style_map,
+    )
+    heading(story, "画面稳定等待", style_map)
+    bullets(
+        story,
+        [
+            "勾选“等待画面稳定”，超时可设置为 3 到 60 秒。",
+            "远程页面持续变化并超过超时时间时，程序会自动暂停。",
+            "确认页面可操作后按 F7 继续，或按 F8 停止。",
+        ],
+        style_map,
+    )
+    heading(story, "长流程完整性", style_map)
+    bullets(
+        story,
+        [
+            "开始前确认总行数、启用行、禁用行、循环数、计划点次和计划点击数。",
+            "只有实际完成数与计划完全一致，程序才显示全部完成。",
+            "停止或异常后可从精确断点继续，也可点击“重新开始”。",
+            "执行日志保存在 %LocalAppData%\\OrderedClicker\\logs。",
+        ],
+        style_map,
+    )
+
+    story.append(PageBreak())
+    section_header(story, "10", "DPI、屏幕缩放与多显示器", "普通模式使用物理屏幕坐标，云桌面模式使用已校准区域内的相对坐标。", style_map)
     heading(story, "支持的情况", style_map)
     bullets(
         story,
@@ -614,19 +652,20 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
     callout(
         story,
         "为什么不自动换算：",
-        "绝对坐标自动缩放可能静默点击错误位置。程序选择提示重新采点，优先保证可控性。",
+        "普通模式的绝对坐标不会静默缩放；云桌面模式在重新校准区域后按比例恢复点位。",
         style_map,
     )
 
     story.append(PageBreak())
-    section_header(story, "10", "常见问题", "出现问题时先停止任务，再按现象逐项排查。", style_map)
+    section_header(story, "11", "常见问题", "出现问题时先停止任务，再按现象逐项排查。", style_map)
     story.append(
         guide_table(
             [
                 ["现象", "处理方法"],
-                ["默认快捷键无反应", "进入设置更换组合键；若注册失败程序会保留原快捷键，按钮始终可用。"],
-                ["快捷键无法保存", "必须包含 Ctrl、Alt、Shift 或 Win，并确保三个操作不重复。"],
-                ["点击位置偏移", "检查窗口、分辨率、缩放和显示器排列，变化后重新采点。"],
+                ["默认快捷键无反应", "进入设置切换兼容模式或自定义；按钮始终可用。"],
+                ["快捷键无法保存", "无修饰键只允许 F6-F12，并确保三个操作不重复。"],
+                ["点击位置偏移", "云桌面先重新校准区域；普通模式检查窗口、缩放和显示器排列。"],
+                ["步骤多时提前结束", "开始前核对启用行和计划点击数；未匹配时不会显示完成，可从断点继续。"],
                 ["无法点击管理员程序", "让连点器与目标程序使用相同权限。"],
                 ["时间输入后恢复", "点击间隔至少 10 ms；输入后点击其他单元格完成编辑。"],
                 ["应用全部后特殊值消失", "这是正常批量覆盖；请在批量应用后再设置单行例外。"],
@@ -640,7 +679,7 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
     )
 
     story.append(PageBreak())
-    section_header(story, "11", "安全建议", "自动点击只适合可逆、低风险、位置固定的重复操作。", style_map)
+    section_header(story, "12", "安全建议", "自动点击只适合可逆、低风险、位置固定的重复操作。", style_map)
     callout(
         story,
         "禁止场景：",
@@ -653,7 +692,7 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
         [
             "正式使用前先执行一轮，核对坐标、顺序、次数和等待时间。",
             "执行期间不要主动移动鼠标，不要拖动目标窗口。",
-            "始终确保 Ctrl+Alt+F10 可用，并定期观察目标页面状态。",
+            "始终确保 F8 或自定义停止键可用，并定期观察目标页面状态。",
             "页面出现弹窗、加载异常或内容变化时立即停止。",
             "环境发生变化后重新采点，不继续依赖旧坐标。",
         ],
@@ -661,7 +700,7 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
     )
 
     story.append(PageBreak())
-    section_header(story, "12", "执行检查清单", "每次正式运行前后，用这一页快速核对。", style_map)
+    section_header(story, "13", "执行检查清单", "每次正式运行前后，用这一页快速核对。", style_map)
     heading(story, "执行前", style_map)
     bullets(
         story,
@@ -672,7 +711,8 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
             "已先应用全局时间，再确认单行例外。",
             "点击次数、点击间隔、点后等待和循环次数已核对。",
             "首次或环境变化后只运行一轮。",
-            "确认 Ctrl+Alt+F10 可以立即停止。",
+            "确认 F8 或自定义停止键可以立即停止。",
+            "确认启用行数、计划点次和计划点击数符合预期。",
         ],
         style_map,
     )
@@ -701,8 +741,8 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
         guide_table(
             [
                 ["文件", "用途"],
-                ["ordered-clicker-setup-v1.2.0.exe", "Windows 安装版。"],
-                ["ordered-clicker-portable-v1.2.0.zip", "免安装便携版。"],
+                ["ordered-clicker-setup-v1.3.0.exe", "Windows 安装版。"],
+                ["ordered-clicker-portable-v1.3.0.zip", "免安装便携版。"],
                 ["有序连点器-使用说明.pdf", "当前离线说明书。"],
                 ["有序连点器-使用说明.html", "可搜索、可放大图片的网页说明。"],
                 ["有序连点器-视频演示.mp4", "完整语音操作演示，视频内容沿用上一版。"],
@@ -715,7 +755,7 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
     callout(
         story,
         "版本说明：",
-        "1.2.0 默认快捷键调整为 Ctrl+Alt+F8/F9/F10，并支持在设置中自定义、冲突检测和失败回退。",
+        "1.3.0 新增云桌面区域校准、相对坐标、画面稳定等待、执行计划计数、断点继续、另存为和 F6/F7/F8 简洁快捷键。",
         style_map,
         "#19c7d9",
     )
@@ -736,7 +776,7 @@ def main() -> None:
         bottomMargin=20 * mm,
         title="有序连点器使用说明",
         author="ljy-codes",
-        subject="有序连点器 1.2.0 零基础操作指导",
+        subject="有序连点器 1.3.0 零基础操作指导",
     )
     frame = Frame(
         doc.leftMargin,
