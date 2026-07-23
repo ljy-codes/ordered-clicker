@@ -21,6 +21,7 @@ internal static class UiSmokeTests
         AssertCloudDesktopControls(form);
         AssertSaveCommands(form);
         AssertProfileDirectoryControls(form);
+        AssertKeyboardProfileSelectionCapturesCurrentText(form);
         AssertImportedCopyRequiresSaveAs(form);
         AssertLocalProfileBindsSourceFile(form);
         AssertGlobalTimingApplication(form);
@@ -82,6 +83,28 @@ internal static class UiSmokeTests
             "方案下拉框应允许直接编辑名称");
         TestAssert.True(directoryButton is not null, "主窗体应包含方案目录按钮");
         TestAssert.True(directoryButton!.Width >= 36, "方案目录按钮应保持稳定宽度");
+    }
+
+    private static void AssertKeyboardProfileSelectionCapturesCurrentText(MainForm form)
+    {
+        var selector = EnumerateControls(form)
+            .OfType<ComboBox>()
+            .Single(control => control.Name == "ProfileSelector");
+        var previousTextField = typeof(MainForm).GetField(
+            "_profileSelectorTextBeforeSelection",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        var onKeyDown = typeof(Control).GetMethod(
+            "OnKeyDown",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+
+        selector.Text = "键盘切换前名称";
+        previousTextField!.SetValue(form, "过期名称");
+        onKeyDown!.Invoke(selector, [new KeyEventArgs(Keys.Down)]);
+
+        TestAssert.Equal(
+            "键盘切换前名称",
+            (string)previousTextField.GetValue(form)!,
+            "关闭下拉框用方向键切换前应捕获当前编辑名称");
     }
 
     private static void AssertImportedCopyRequiresSaveAs(MainForm form)

@@ -275,6 +275,33 @@ finally {
     }
 }
 
+$expectedProductNames = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::OrdinalIgnoreCase)
+foreach ($stagedFile in $stagedProductFiles) {
+    $expectedProductNames.Add(
+        [System.IO.Path]::GetFileName($stagedFile)) | Out-Null
+}
+
+$productEntries = @(Get-ChildItem -Force -LiteralPath $resolvedProductDirectory)
+$unexpectedProductEntries = @(
+    $productEntries |
+        Where-Object {
+            $_.PSIsContainer -or -not $expectedProductNames.Contains($_.Name)
+        }
+)
+if ($unexpectedProductEntries.Count -gt 0) {
+    $unexpectedNames = $unexpectedProductEntries.Name -join "、"
+    throw "产品目录包含非交付项：$unexpectedNames。请移走后重新构建。"
+}
+
+$deliveredFiles = @($productEntries | Where-Object { -not $_.PSIsContainer })
+if ($deliveredFiles.Count -ne $expectedProductNames.Count) {
+    throw (
+        "产品目录文件数量不正确。期望 $($expectedProductNames.Count) 个，" +
+        "实际 $($deliveredFiles.Count) 个。"
+    )
+}
+
 Write-Host ""
 Write-Host "安装版构建完成：" -ForegroundColor Green
 Write-Host "  安装包：$(Join-Path $resolvedProductDirectory $installerFileName)"

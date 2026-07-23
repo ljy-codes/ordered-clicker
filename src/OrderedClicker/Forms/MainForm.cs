@@ -534,6 +534,10 @@ public sealed partial class MainForm : Form
             _profileSelectorTextBeforeSelection = _profileSelector.Text;
             RefreshProfileDirectory();
         };
+        _profileSelector.KeyDown += (_, eventArgs) =>
+            CaptureProfileSelectorTextBeforeKeyboardSelection(eventArgs);
+        _profileSelector.MouseWheel += (_, _) =>
+            _profileSelectorTextBeforeSelection = _profileSelector.Text;
         _profileSelector.SelectionChangeCommitted += (_, _) => SelectLocalProfile();
         _openProfilesDirectoryButton.Click += (_, _) => OpenProfilesDirectory();
         _importProfileButton.Click += (_, _) => ImportProfile();

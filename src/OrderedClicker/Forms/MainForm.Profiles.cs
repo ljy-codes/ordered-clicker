@@ -6,6 +6,24 @@ namespace OrderedClicker.Forms;
 
 public sealed partial class MainForm
 {
+    private void CaptureProfileSelectorTextBeforeKeyboardSelection(KeyEventArgs eventArgs)
+    {
+        if (_profileSelector.DroppedDown)
+        {
+            return;
+        }
+
+        if (eventArgs.KeyCode is Keys.Up
+            or Keys.Down
+            or Keys.Home
+            or Keys.End
+            or Keys.PageUp
+            or Keys.PageDown)
+        {
+            _profileSelectorTextBeforeSelection = _profileSelector.Text;
+        }
+    }
+
     private void RefreshProfileDirectory()
     {
         var preservedText = _profileSelector.Text;

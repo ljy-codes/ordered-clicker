@@ -157,6 +157,10 @@ Assert-Contains -Content $buildScript -Expected '$PSVersionTable.PSVersion.Major
 Assert-Contains -Content $buildScript -Expected '& (Join-Path $PSScriptRoot "publish.ps1") -Version $Version' -Name "发布版本透传"
 Assert-Contains -Content $buildScript -Expected '"product-staging"' -Name "产品文件先暂存"
 Assert-Contains -Content $buildScript -Expected '$ownedProductPatterns' -Name "清理旧版本产品文件"
+Assert-Contains `
+    -Content $buildScript `
+    -Expected "产品目录包含非交付项" `
+    -Name "拒绝产品目录残留额外文件或目录"
 Assert-Contains -Content $buildScript -Expected '"OrderedClicker.exe"' -Name "清理旧免安装 EXE"
 Assert-NotContains `
     -Content $buildScript `
