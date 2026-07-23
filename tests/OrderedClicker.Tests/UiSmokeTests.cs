@@ -764,6 +764,11 @@ internal static class UiSmokeTests
         TestAssert.True(
             dialogText.Contains("导入为副本") && dialogText.Contains("导出方案"),
             "使用说明应解释方案导入和导出语义");
+        TestAssert.True(
+            dialogText.Contains("方案下拉")
+            && dialogText.Contains("打开方案目录")
+            && dialogText.Contains("保存 / 不保存 / 取消"),
+            "使用说明应解释本机方案目录和切换保护");
         TestAssert.True(dialogUsesCurrentTheme, "使用说明弹窗应使用当前主题");
     }
 

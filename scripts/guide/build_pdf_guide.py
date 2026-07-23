@@ -559,6 +559,17 @@ def build_story(style_map: dict[str, ParagraphStyle]) -> list:
         ],
         style_map,
     )
+    heading(story, "方案下拉与默认目录", style_map)
+    bullets(
+        story,
+        [
+            "方案下拉：点击“方案名称”右侧箭头，只列出程序默认方案目录中的 JSON 文件；输入框仍可直接填写新名称。",
+            "打开方案目录：点击下拉框右侧的文件夹按钮，打开 %LocalAppData%\\OrderedClicker\\profiles。",
+            "当前方案有修改时，切换会出现“保存 / 不保存 / 取消”：保存后切换、不保存直接切换、取消留在当前方案。",
+            "默认目录以外的 JSON 文件继续使用“导入方案”，并按副本处理。",
+        ],
+        style_map,
+    )
     heading(story, "导入后的检查", style_map)
     bullets(
         story,
