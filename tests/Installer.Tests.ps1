@@ -142,6 +142,10 @@ Assert-Contains `
     -Name "产品版本不附加提交哈希"
 Assert-Contains -Content $buildScript -Expected "publish.ps1" -Name "复用发布脚本"
 Assert-Contains -Content $buildScript -Expected "Compress-Archive" -Name "生成便携版"
+Assert-Contains `
+    -Content $buildScript `
+    -Expected 'foreach ($packagePath in @($installerPath, $publishedExecutable))' `
+    -Name "产品目录复制安装包和免安装 EXE"
 Assert-Contains -Content $buildScript -Expected "Get-FileHash" -Name "校验交付复制"
 Assert-Contains -Content $buildScript -Expected "有序连点器-使用说明.pdf" -Name "复制 PDF"
 Assert-Contains -Content $buildScript -Expected "有序连点器-使用说明.html" -Name "复制 HTML"
@@ -153,10 +157,7 @@ Assert-Contains -Content $buildScript -Expected '$PSVersionTable.PSVersion.Major
 Assert-Contains -Content $buildScript -Expected '& (Join-Path $PSScriptRoot "publish.ps1") -Version $Version' -Name "发布版本透传"
 Assert-Contains -Content $buildScript -Expected '"product-staging"' -Name "产品文件先暂存"
 Assert-Contains -Content $buildScript -Expected '$ownedProductPatterns' -Name "清理旧版本产品文件"
-Assert-Contains `
-    -Content $buildScript `
-    -Expected 'foreach ($packagePath in @($installerPath))' `
-    -Name "产品目录只复制安装包"
+Assert-Contains -Content $buildScript -Expected '"OrderedClicker.exe"' -Name "清理旧免安装 EXE"
 Assert-NotContains `
     -Content $buildScript `
     -Unexpected '$currentProductNames.Add("SHA256SUMS.txt")' `
@@ -176,6 +177,10 @@ Assert-Contains -Content $publishScript -Expected "Assert-SafeRecursivePath" -Na
 Assert-Contains -Content $pathSafety -Expected "[System.IO.FileAttributes]::ReparsePoint" -Name "拒绝重解析点"
 Assert-Contains -Content $readme -Expected "PowerShell 7" -Name "构建依赖说明"
 Assert-Contains -Content $readme -Expected "最终产品目录只包含" -Name "最小交付说明"
+Assert-Contains `
+    -Content $readme `
+    -Expected "安装版 EXE、免安装 EXE、PDF 使用说明和 HTML 使用说明" `
+    -Name "四文件交付说明"
 
 $guidePreflightIndex = $buildScript.IndexOf("缺少指导文件", [StringComparison]::Ordinal)
 $publishIndex = $buildScript.IndexOf("发布 Windows x64 自包含应用", [StringComparison]::Ordinal)

@@ -27,10 +27,12 @@ Windows 10/11 x64 免费开源桌面连点器，无授权码和联网验证。�
 
 正式产品目录中同时提供：
 
+- `ordered-clicker-setup-v1.3.1.exe`
+- `OrderedClicker.exe`
 - `有序连点器-使用说明.pdf`
 - `有序连点器-使用说明.html`
 
-最终产品目录只包含安装版 EXE、PDF 使用说明和 HTML 使用说明。便携包属于内部构建产物，不放入最终交付目录。
+最终产品目录只包含安装版 EXE、免安装 EXE、PDF 使用说明和 HTML 使用说明。ZIP 便携包属于内部构建产物，不放入最终交付目录。
 
 ## 热键
 
@@ -90,6 +92,8 @@ Windows 10/11 x64 免费开源桌面连点器，无授权码和联网验证。�
 完整产品包需要指导成品目录中存在以下两个文件：
 
 ```text
+ordered-clicker-setup-v1.3.1.exe
+OrderedClicker.exe
 有序连点器-使用说明.pdf
 有序连点器-使用说明.html
 ```
@@ -106,4 +110,4 @@ pwsh -NoProfile -File .\scripts\build-installer.ps1 `
   -GuideSourceDirectory "D:\专用工具\连点器\操作指导"
 ```
 
-应用发布结果位于 `publish\win-x64`，安装器和便携包中间产物位于 `publish\packages`。最终产品目录与 GitHub Release 只发布安装版 EXE、PDF 和 HTML。
+应用发布结果位于 `publish\win-x64`，安装器和 ZIP 便携包中间产物位于 `publish\packages`。最终产品目录只发布安装版 EXE、免安装 EXE、PDF 和 HTML。

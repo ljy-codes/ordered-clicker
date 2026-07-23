@@ -197,7 +197,7 @@ if (-not (Test-Path -LiteralPath $installerPath -PathType Leaf)) {
 }
 
 $stagedProductFiles = [System.Collections.Generic.List[string]]::new()
-foreach ($packagePath in @($installerPath)) {
+foreach ($packagePath in @($installerPath, $publishedExecutable)) {
     $destination = Join-Path $productStagingDirectory ([System.IO.Path]::GetFileName($packagePath))
     Copy-Item -LiteralPath $packagePath -Destination $destination -Force
     $stagedProductFiles.Add($destination)
@@ -221,6 +221,7 @@ New-Item -ItemType Directory -Force -Path $safeDeliveryStagingDirectory | Out-Nu
 $ownedProductPatterns = @(
     "ordered-clicker-setup-v*.exe",
     "ordered-clicker-portable-v*.zip",
+    "OrderedClicker.exe",
     "有序连点器-使用说明.pdf",
     "有序连点器-使用说明.html",
     "有序连点器-视频演示.mp4",
@@ -277,5 +278,6 @@ finally {
 Write-Host ""
 Write-Host "安装版构建完成：" -ForegroundColor Green
 Write-Host "  安装包：$(Join-Path $resolvedProductDirectory $installerFileName)"
+Write-Host "  免安装版：$(Join-Path $resolvedProductDirectory 'OrderedClicker.exe')"
 Write-Host "  PDF：$(Join-Path $resolvedProductDirectory '有序连点器-使用说明.pdf')"
 Write-Host "  HTML：$(Join-Path $resolvedProductDirectory '有序连点器-使用说明.html')"
