@@ -48,7 +48,8 @@ public sealed partial class MainForm : Form
     private readonly Button _usageHelpButton = new();
     private readonly Button _saveButton = new();
     private readonly Button _saveAsButton = new();
-    private readonly Button _loadButton = new();
+    private readonly Button _importProfileButton = new();
+    private readonly Button _exportProfileButton = new();
     private readonly Button _applyClickIntervalButton = new();
     private readonly Button _applyAfterDelayButton = new();
     private readonly Button _startPauseButton = new();
@@ -179,7 +180,7 @@ public sealed partial class MainForm : Form
             Padding = new Padding(12),
             BackColor = _theme.Window
         };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 68));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 88));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -199,12 +200,30 @@ public sealed partial class MainForm : Form
 
     private Control BuildProfilePanel()
     {
-        var panel = new FlowLayoutPanel
+        var panel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            BackColor = _theme.Window
+        };
+        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+
+        var fields = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.LeftToRight,
             WrapContents = false,
-            Padding = new Padding(0, 8, 0, 8),
+            Padding = new Padding(0, 5, 0, 5),
+            BackColor = _theme.Window
+        };
+        var actions = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            Padding = new Padding(0, 3, 0, 5),
             BackColor = _theme.Window
         };
 
@@ -227,24 +246,30 @@ public sealed partial class MainForm : Form
         _saveButton.Text = "保存";
         _saveAsButton.Name = "SaveAsButton";
         _saveAsButton.Text = "另存为";
-        _loadButton.Name = "LoadButton";
-        _loadButton.Text = "加载";
+        _importProfileButton.Name = "ImportProfileButton";
+        _importProfileButton.Text = "导入方案";
+        _exportProfileButton.Name = "ExportProfileButton";
+        _exportProfileButton.Text = "导出方案";
         ConfigureCommandButton(_saveButton, 68);
         ConfigureCommandButton(_saveAsButton, 78);
-        ConfigureCommandButton(_loadButton, 68);
+        ConfigureCommandButton(_importProfileButton, 78);
+        ConfigureCommandButton(_exportProfileButton, 78);
 
-        panel.Controls.Add(CreateFieldLabel("方案名称"));
-        panel.Controls.Add(_profileNameTextBox);
-        panel.Controls.Add(CreateSpacer(12));
-        panel.Controls.Add(CreateFieldLabel("总循环次数"));
-        panel.Controls.Add(_totalLoopsInput);
-        panel.Controls.Add(CreateSpacer(12));
-        panel.Controls.Add(CreateFieldLabel("轮间等待(ms)"));
-        panel.Controls.Add(_loopDelayInput);
-        panel.Controls.Add(CreateSpacer(18));
-        panel.Controls.Add(_saveButton);
-        panel.Controls.Add(_saveAsButton);
-        panel.Controls.Add(_loadButton);
+        fields.Controls.Add(CreateFieldLabel("方案名称"));
+        fields.Controls.Add(_profileNameTextBox);
+        fields.Controls.Add(CreateSpacer(12));
+        fields.Controls.Add(CreateFieldLabel("总循环次数"));
+        fields.Controls.Add(_totalLoopsInput);
+        fields.Controls.Add(CreateSpacer(12));
+        fields.Controls.Add(CreateFieldLabel("轮间等待(ms)"));
+        fields.Controls.Add(_loopDelayInput);
+
+        actions.Controls.Add(_saveButton);
+        actions.Controls.Add(_saveAsButton);
+        actions.Controls.Add(_importProfileButton);
+        actions.Controls.Add(_exportProfileButton);
+        panel.Controls.Add(fields, 0, 0);
+        panel.Controls.Add(actions, 0, 1);
         return panel;
     }
 
@@ -469,6 +494,12 @@ public sealed partial class MainForm : Form
         _toolTip.SetToolTip(_startPauseButton, "开始、暂停或继续执行。");
         _toolTip.SetToolTip(_stopButton, "立即停止倒计时、等待或点击任务。");
         _toolTip.SetToolTip(_saveAsButton, "将当前方案保存到指定位置。");
+        _toolTip.SetToolTip(
+            _importProfileButton,
+            "从 JSON 文件导入方案副本，不会覆盖来源文件。");
+        _toolTip.SetToolTip(
+            _exportProfileButton,
+            "将当前方案导出为 JSON 文件，不改变当前保存位置。");
         _toolTip.SetToolTip(_calibrateRegionButton, "依次记录云桌面画面的左上角和右下角。");
         _captureButton.Click += (_, _) => ToggleCaptureMode();
         _moveUpButton.Click += (_, _) => MoveSelectedPoint(-1);
@@ -477,7 +508,8 @@ public sealed partial class MainForm : Form
         _clearButton.Click += (_, _) => ClearPoints();
         _saveButton.Click += (_, _) => SaveProfile();
         _saveAsButton.Click += (_, _) => SaveProfileAs();
-        _loadButton.Click += (_, _) => LoadProfile();
+        _importProfileButton.Click += (_, _) => ImportProfile();
+        _exportProfileButton.Click += (_, _) => ExportProfile();
         _themeSettingsButton.Click += (_, _) => ShowThemeSettings();
         _usageHelpButton.Click += (_, _) => ShowUsageHelp();
         _applyClickIntervalButton.Click += (_, _) => ApplyClickIntervalToAll();
@@ -575,7 +607,8 @@ public sealed partial class MainForm : Form
 
         ApplyNeutralButtonTheme(_saveButton);
         ApplyNeutralButtonTheme(_saveAsButton);
-        ApplyNeutralButtonTheme(_loadButton);
+        ApplyNeutralButtonTheme(_importProfileButton);
+        ApplyNeutralButtonTheme(_exportProfileButton);
         ApplyNeutralButtonTheme(_moveUpButton);
         ApplyNeutralButtonTheme(_moveDownButton);
         ApplyNeutralButtonTheme(_deleteButton);
@@ -590,7 +623,8 @@ public sealed partial class MainForm : Form
 
         ApplyAccentButtonTheme(_saveButton, theme.Primary);
         ApplyAccentButtonTheme(_saveAsButton, theme.SettingsAccent);
-        ApplyAccentButtonTheme(_loadButton, theme.HelpAccent);
+        ApplyAccentButtonTheme(_importProfileButton, theme.HelpAccent);
+        ApplyAccentButtonTheme(_exportProfileButton, theme.CaptureAccent);
         ApplyAccentButtonTheme(_moveUpButton, theme.Primary);
         ApplyAccentButtonTheme(_moveDownButton, theme.Primary);
         ApplyAccentButtonTheme(_deleteButton, theme.DangerAccent);
@@ -874,11 +908,11 @@ public sealed partial class MainForm : Form
         }
     }
 
-    private void LoadProfile()
+    private void ImportProfile()
     {
         using var dialog = new OpenFileDialog
         {
-            Title = "加载连点器配置",
+            Title = "导入连点器方案副本",
             Filter = "连点器配置 (*.json)|*.json|所有文件 (*.*)|*.*",
             InitialDirectory = _profileService.ProfilesDirectory,
             CheckFileExists = true
@@ -889,17 +923,72 @@ public sealed partial class MainForm : Form
             return;
         }
 
-        var result = _profileService.Load(dialog.FileName);
+        var result = _profileService.Import(dialog.FileName);
         if (!result.Success)
         {
-            ShowError(result.ErrorMessage ?? "配置加载失败。");
+            ShowError(result.ErrorMessage ?? "方案导入失败。");
             return;
         }
 
-        ApplyProfile(result.Profile!);
-        _currentProfilePath = dialog.FileName;
+        var profile = result.Profile!;
+        var enabledPointCount = profile.Points.Count(point => point.Enabled);
+        var confirmation = MessageBox.Show(
+            this,
+            $"""
+            方案名称：{profile.Name}
+            点位总数：{profile.Points.Count}
+            启用点位：{enabledPointCount}
+            总循环次数：{profile.TotalLoops}
+
+            导入后将作为本机副本，不会覆盖来源文件。
+            是否继续导入？
+            """,
+            "确认导入方案",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Question,
+            MessageBoxDefaultButton.Button1);
+        if (confirmation != DialogResult.Yes)
+        {
+            SetStatus("已取消导入方案。");
+            return;
+        }
+
+        ApplyProfile(profile);
+        _currentProfilePath = null;
         ClearExecutionCheckpoint();
-        SetStatus($"已加载配置：{dialog.FileName}");
+        SetStatus($"已导入方案副本：{dialog.FileName}");
+    }
+
+    private void ExportProfile()
+    {
+        using var dialog = new SaveFileDialog
+        {
+            Title = "导出连点器方案",
+            Filter = "连点器配置 (*.json)|*.json",
+            InitialDirectory = _currentProfilePath is null
+                ? Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
+                : Path.GetDirectoryName(_currentProfilePath),
+            FileName = $"{_profileNameTextBox.Text.Trim()}.json",
+            AddExtension = true,
+            DefaultExt = "json",
+            OverwritePrompt = true
+        };
+
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        try
+        {
+            CommitGridChanges();
+            var path = _profileService.Export(CreateProfileSnapshot(), dialog.FileName);
+            SetStatus($"方案已导出：{path}");
+        }
+        catch (Exception exception)
+        {
+            ShowError($"导出方案失败：{exception.Message}");
+        }
     }
 
     private ClickProfile CreateProfileSnapshot()

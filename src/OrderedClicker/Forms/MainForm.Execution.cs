@@ -299,7 +299,8 @@ public sealed partial class MainForm
         _themeSettingsButton.Enabled = enabled;
         _saveButton.Enabled = enabled;
         _saveAsButton.Enabled = enabled;
-        _loadButton.Enabled = enabled;
+        _importProfileButton.Enabled = enabled;
+        _exportProfileButton.Enabled = enabled;
         _applyClickIntervalButton.Enabled = enabled;
         _applyAfterDelayButton.Enabled = enabled;
         _cloudDesktopEnabledCheckBox.Enabled = enabled;

@@ -56,8 +56,10 @@ internal static class UiSmokeTests
             "主窗体应保留保存按钮");
         TestAssert.True(buttons.Any(button => button.Name == "SaveAsButton"),
             "主窗体应包含另存为按钮");
-        TestAssert.True(buttons.Any(button => button.Name == "LoadButton"),
-            "主窗体应保留加载按钮");
+        TestAssert.True(buttons.Any(button => button.Name == "ImportProfileButton"),
+            "主窗体应包含导入方案按钮");
+        TestAssert.True(buttons.Any(button => button.Name == "ExportProfileButton"),
+            "主窗体应包含导出方案按钮");
     }
 
     public static void Render(string outputPath)
@@ -630,6 +632,9 @@ internal static class UiSmokeTests
         TestAssert.True(
             dialogText.Contains("应用全部") && dialogText.Contains("新采集点"),
             "使用说明应包含全局时间设置和新点继承说明");
+        TestAssert.True(
+            dialogText.Contains("导入为副本") && dialogText.Contains("导出方案"),
+            "使用说明应解释方案导入和导出语义");
         TestAssert.True(dialogUsesCurrentTheme, "使用说明弹窗应使用当前主题");
     }
 
