@@ -9,7 +9,84 @@ internal static class ProfileServiceTests
     {
         RoundTripsAllProfileFields();
         SavesToExplicitPath();
+        ExportsAndImportsCompleteProfile();
+        RejectsUnsupportedFutureVersion();
+        RejectsInvalidPointTiming();
+        RejectsInvalidCloudRelativeCoordinate();
         ReturnsControlledErrorForMalformedJson();
+    }
+
+    private static void ExportsAndImportsCompleteProfile()
+    {
+        using var directory = new TemporaryDirectory();
+        var service = new ProfileService(directory.Path);
+        var path = System.IO.Path.Combine(directory.Path, "share", "方案.json");
+        var source = CreateCompleteProfile();
+
+        var exportedPath = service.Export(source, path);
+        var imported = service.Import(exportedPath);
+
+        TestAssert.Equal(path, exportedPath, "导出应返回用户选择的路径");
+        TestAssert.True(imported.Success, imported.ErrorMessage ?? "导入应成功");
+        TestAssert.Equal(source.Name, imported.Profile!.Name, "导入应保留方案名称");
+        TestAssert.Equal(source.Points.Count, imported.Profile.Points.Count, "导入应保留全部点位");
+        TestAssert.Equal(source.CoordinateMode, imported.Profile.CoordinateMode, "导入应保留坐标模式");
+        TestAssert.Equal(
+            source.ScreenStability.TimeoutMs,
+            imported.Profile.ScreenStability.TimeoutMs,
+            "导入应保留画面稳定等待设置");
+    }
+
+    private static void RejectsUnsupportedFutureVersion()
+    {
+        using var directory = new TemporaryDirectory();
+        var service = new ProfileService(directory.Path);
+        var path = System.IO.Path.Combine(directory.Path, "future.json");
+        File.WriteAllText(
+            path,
+            """{"Version":99,"Name":"未来方案","TotalLoops":1,"Points":[]}""",
+            System.Text.Encoding.UTF8);
+
+        var result = service.Import(path);
+
+        TestAssert.True(!result.Success, "未来版本应被拒绝");
+        TestAssert.True(
+            (result.ErrorMessage ?? string.Empty).Contains("版本", StringComparison.Ordinal),
+            "错误应说明版本不受支持");
+    }
+
+    private static void RejectsInvalidPointTiming()
+    {
+        using var directory = new TemporaryDirectory();
+        var service = new ProfileService(directory.Path);
+        var profile = CreateCompleteProfile();
+        profile.CoordinateMode = CoordinateMode.AbsoluteScreen;
+        profile.CloudDesktopRegion = null;
+        profile.Points[0].ClickCount = 0;
+        var path = service.Save(profile, System.IO.Path.Combine(directory.Path, "invalid-point.json"));
+
+        var result = service.Import(path);
+
+        TestAssert.True(!result.Success, "非法点击次数应被拒绝");
+        TestAssert.True(
+            (result.ErrorMessage ?? string.Empty).Contains("点击次数", StringComparison.Ordinal),
+            "错误应指出非法点击次数");
+    }
+
+    private static void RejectsInvalidCloudRelativeCoordinate()
+    {
+        using var directory = new TemporaryDirectory();
+        var service = new ProfileService(directory.Path);
+        var profile = CreateCompleteProfile();
+        profile.Points[0].RelativeX = 1.2;
+        var path = service.Save(profile, System.IO.Path.Combine(directory.Path, "invalid-cloud.json"));
+
+        var result = service.Import(path);
+
+        TestAssert.True(!result.Success, "非法云桌面相对坐标应被拒绝");
+        TestAssert.True(
+            (result.ErrorMessage ?? string.Empty).Contains("相对坐标", StringComparison.Ordinal),
+            "错误应指出非法云桌面相对坐标");
     }
 
     private static void SavesToExplicitPath()
@@ -81,6 +158,51 @@ internal static class ProfileServiceTests
         TestAssert.True(!result.Success, "损坏 JSON 应返回失败结果");
         TestAssert.True(result.Profile is null, "损坏 JSON 不应返回配置对象");
         TestAssert.True(!string.IsNullOrWhiteSpace(result.ErrorMessage), "失败结果应包含错误信息");
+    }
+
+    private static ClickProfile CreateCompleteProfile()
+    {
+        return new ClickProfile
+        {
+            Version = 3,
+            Name = "云桌面日报方案",
+            TotalLoops = 8,
+            LoopDelayMs = 1200,
+            DefaultClickIntervalMs = 150,
+            DefaultAfterDelayMs = 700,
+            CoordinateMode = CoordinateMode.CloudDesktopRegion,
+            CloudDesktopRegion = new CloudDesktopRegion
+            {
+                X = 100,
+                Y = 80,
+                Width = 1200,
+                Height = 800,
+                MonitorDeviceName = "\\\\.\\DISPLAY1",
+                CapturedDpi = 96
+            },
+            ScreenStability = new ScreenStabilitySettings
+            {
+                Enabled = true,
+                TimeoutMs = 15000
+            },
+            Points =
+            [
+                new ClickPoint
+                {
+                    Enabled = true,
+                    X = 400,
+                    Y = 300,
+                    RelativeX = 0.25,
+                    RelativeY = 0.275,
+                    ClickCount = 2,
+                    ClickIntervalMs = 150,
+                    AfterDelayMs = 700,
+                    MonitorDeviceName = "\\\\.\\DISPLAY1",
+                    MonitorBounds = new ScreenBounds(0, 0, 1920, 1080),
+                    CapturedDpi = 96
+                }
+            ]
+        };
     }
 
     private sealed class TemporaryDirectory : IDisposable
