@@ -11,14 +11,26 @@ public static class HotKeyBindingService
         | ShortcutModifiers.Windows;
 
     public static HotKeyBinding DefaultCapture { get; } = new(
+        Keys.F6,
+        ShortcutModifiers.None);
+
+    public static HotKeyBinding DefaultStartPause { get; } = new(
+        Keys.F7,
+        ShortcutModifiers.None);
+
+    public static HotKeyBinding DefaultStop { get; } = new(
+        Keys.F8,
+        ShortcutModifiers.None);
+
+    public static HotKeyBinding CompatibilityCapture { get; } = new(
         Keys.F8,
         ShortcutModifiers.Control | ShortcutModifiers.Alt);
 
-    public static HotKeyBinding DefaultStartPause { get; } = new(
+    public static HotKeyBinding CompatibilityStartPause { get; } = new(
         Keys.F9,
         ShortcutModifiers.Control | ShortcutModifiers.Alt);
 
-    public static HotKeyBinding DefaultStop { get; } = new(
+    public static HotKeyBinding CompatibilityStop { get; } = new(
         Keys.F10,
         ShortcutModifiers.Control | ShortcutModifiers.Alt);
 
@@ -38,8 +50,11 @@ public static class HotKeyBindingService
 
         if (binding.Modifiers == ShortcutModifiers.None)
         {
-            error = "快捷键必须包含 Ctrl、Alt、Shift 或 Win 修饰键。";
-            return false;
+            if (binding.Key is < Keys.F6 or > Keys.F12)
+            {
+                error = "无修饰键时仅允许使用 F6 到 F12。";
+                return false;
+            }
         }
 
         if ((binding.Modifiers & ~KnownModifiers) != 0)

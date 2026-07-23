@@ -25,7 +25,9 @@ public sealed partial class MainForm : Form
     private readonly MonitorService _monitorService = new();
     private readonly ProfileService _profileService = new();
     private readonly SettingsService _settingsService;
-    private readonly ClickExecutionEngine _executionEngine = new(new WindowsMouseController());
+    private readonly ClickExecutionEngine _executionEngine = new(
+        new WindowsMouseController(),
+        stabilityDetector: new ScreenStabilityDetector(new WindowsScreenSampler()));
     private readonly AsyncPauseGate _pauseGate = new();
     private readonly ToolTip _toolTip = new();
     private readonly bool _enableGlobalHotKeys;
@@ -45,11 +47,18 @@ public sealed partial class MainForm : Form
     private readonly Button _themeSettingsButton = new();
     private readonly Button _usageHelpButton = new();
     private readonly Button _saveButton = new();
+    private readonly Button _saveAsButton = new();
     private readonly Button _loadButton = new();
     private readonly Button _applyClickIntervalButton = new();
     private readonly Button _applyAfterDelayButton = new();
     private readonly Button _startPauseButton = new();
     private readonly Button _stopButton = new();
+    private readonly Button _restartButton = new();
+    private readonly CheckBox _cloudDesktopEnabledCheckBox = new();
+    private readonly Button _calibrateRegionButton = new();
+    private readonly Label _cloudRegionStatusLabel = new();
+    private readonly CheckBox _waitForStableScreenCheckBox = new();
+    private readonly NumericUpDown _stabilityTimeoutInput = new();
     private readonly Label _executionHintLabel = new();
     private readonly ToolStripStatusLabel _stateStatusLabel = new();
     private readonly ToolStripStatusLabel _progressStatusLabel = new();
@@ -63,7 +72,13 @@ public sealed partial class MainForm : Form
     private HotKeyRegistrationCoordinator? _hotKeyCoordinator;
     private CancellationTokenSource? _executionCancellation;
     private ExecutionState _executionState = ExecutionState.Idle;
-    private bool _captureMode;
+    private CaptureMode _captureMode;
+    private Point? _cloudRegionTopLeft;
+    private CloudDesktopRegion? _cloudDesktopRegion;
+    private int _captureSessionStartCount;
+    private string? _currentProfilePath;
+    private ExecutionPlan? _pendingExecutionPlan;
+    private ExecutionCheckpoint _executionCheckpoint = ExecutionCheckpoint.Start;
     private bool _suspendHotKeyActions;
     private bool _activeHotKeysKnown;
 
@@ -92,6 +107,12 @@ public sealed partial class MainForm : Form
         if (_enableGlobalHotKeys)
         {
             RegisterGlobalHotKeys();
+        }
+
+        if (_settings.RequiresSaveAfterLoad
+            && (!_enableGlobalHotKeys || _activeHotKeyRegistrations.Count == 3))
+        {
+            _settingsService.Save(_settings);
         }
     }
 
@@ -154,11 +175,12 @@ public sealed partial class MainForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 6,
+            RowCount = 7,
             Padding = new Padding(12),
             BackColor = _theme.Window
         };
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 68));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
@@ -167,10 +189,11 @@ public sealed partial class MainForm : Form
 
         root.Controls.Add(BuildProfilePanel(), 0, 0);
         root.Controls.Add(BuildTimingPanel(), 0, 1);
-        root.Controls.Add(_pointGrid, 0, 2);
-        root.Controls.Add(BuildPointToolbar(), 0, 3);
-        root.Controls.Add(BuildExecutionPanel(), 0, 4);
-        root.Controls.Add(BuildStatusStrip(), 0, 5);
+        root.Controls.Add(BuildCloudDesktopPanel(), 0, 2);
+        root.Controls.Add(_pointGrid, 0, 3);
+        root.Controls.Add(BuildPointToolbar(), 0, 4);
+        root.Controls.Add(BuildExecutionPanel(), 0, 5);
+        root.Controls.Add(BuildStatusStrip(), 0, 6);
         Controls.Add(root);
     }
 
@@ -185,25 +208,30 @@ public sealed partial class MainForm : Form
             BackColor = _theme.Window
         };
 
-        _profileNameTextBox.Width = 220;
+        _profileNameTextBox.Width = 200;
         _profileNameTextBox.Text = "默认方案";
         ConfigureInput(_profileNameTextBox);
         _totalLoopsInput.Minimum = 1;
         _totalLoopsInput.Maximum = 100000;
         _totalLoopsInput.Value = 1;
-        _totalLoopsInput.Width = 92;
+        _totalLoopsInput.Width = 78;
         ConfigureInput(_totalLoopsInput);
         _loopDelayInput.Minimum = 0;
         _loopDelayInput.Maximum = 600000;
         _loopDelayInput.Increment = 100;
         _loopDelayInput.Value = 1000;
-        _loopDelayInput.Width = 110;
+        _loopDelayInput.Width = 96;
         ConfigureInput(_loopDelayInput);
 
+        _saveButton.Name = "SaveButton";
         _saveButton.Text = "保存";
+        _saveAsButton.Name = "SaveAsButton";
+        _saveAsButton.Text = "另存为";
+        _loadButton.Name = "LoadButton";
         _loadButton.Text = "加载";
-        ConfigureCommandButton(_saveButton, 82);
-        ConfigureCommandButton(_loadButton, 82);
+        ConfigureCommandButton(_saveButton, 68);
+        ConfigureCommandButton(_saveAsButton, 78);
+        ConfigureCommandButton(_loadButton, 68);
 
         panel.Controls.Add(CreateFieldLabel("方案名称"));
         panel.Controls.Add(_profileNameTextBox);
@@ -215,6 +243,7 @@ public sealed partial class MainForm : Form
         panel.Controls.Add(_loopDelayInput);
         panel.Controls.Add(CreateSpacer(18));
         panel.Controls.Add(_saveButton);
+        panel.Controls.Add(_saveAsButton);
         panel.Controls.Add(_loadButton);
         return panel;
     }
@@ -320,6 +349,10 @@ public sealed partial class MainForm : Form
 
         ConfigurePrimaryButton(_startPauseButton, 190);
         ConfigureCommandButton(_stopButton, 186);
+        _restartButton.Name = "RestartExecutionButton";
+        _restartButton.Text = "重新开始";
+        _restartButton.Visible = false;
+        ConfigureCommandButton(_restartButton, 110);
 
         _executionHintLabel.AutoSize = true;
         _executionHintLabel.Margin = new Padding(18, 10, 0, 0);
@@ -328,6 +361,7 @@ public sealed partial class MainForm : Form
 
         panel.Controls.Add(_startPauseButton);
         panel.Controls.Add(_stopButton);
+        panel.Controls.Add(_restartButton);
         panel.Controls.Add(_executionHintLabel);
         return panel;
     }
@@ -434,12 +468,15 @@ public sealed partial class MainForm : Form
             "将当前点后等待应用到全部已有点位。");
         _toolTip.SetToolTip(_startPauseButton, "开始、暂停或继续执行。");
         _toolTip.SetToolTip(_stopButton, "立即停止倒计时、等待或点击任务。");
+        _toolTip.SetToolTip(_saveAsButton, "将当前方案保存到指定位置。");
+        _toolTip.SetToolTip(_calibrateRegionButton, "依次记录云桌面画面的左上角和右下角。");
         _captureButton.Click += (_, _) => ToggleCaptureMode();
         _moveUpButton.Click += (_, _) => MoveSelectedPoint(-1);
         _moveDownButton.Click += (_, _) => MoveSelectedPoint(1);
         _deleteButton.Click += (_, _) => DeleteSelectedPoint();
         _clearButton.Click += (_, _) => ClearPoints();
         _saveButton.Click += (_, _) => SaveProfile();
+        _saveAsButton.Click += (_, _) => SaveProfileAs();
         _loadButton.Click += (_, _) => LoadProfile();
         _themeSettingsButton.Click += (_, _) => ShowThemeSettings();
         _usageHelpButton.Click += (_, _) => ShowUsageHelp();
@@ -447,6 +484,11 @@ public sealed partial class MainForm : Form
         _applyAfterDelayButton.Click += (_, _) => ApplyAfterDelayToAll();
         _startPauseButton.Click += async (_, _) => await HandleStartPauseAsync();
         _stopButton.Click += (_, _) => StopExecution();
+        _restartButton.Click += async (_, _) =>
+        {
+            ClearExecutionCheckpoint();
+            await StartExecutionAsync();
+        };
         _pointGrid.CellFormatting += PointGridOnCellFormatting;
         _pointGrid.EditingControlShowing += (_, eventArgs) =>
         {
@@ -532,6 +574,7 @@ public sealed partial class MainForm : Form
         ApplyStatusStripTheme();
 
         ApplyNeutralButtonTheme(_saveButton);
+        ApplyNeutralButtonTheme(_saveAsButton);
         ApplyNeutralButtonTheme(_loadButton);
         ApplyNeutralButtonTheme(_moveUpButton);
         ApplyNeutralButtonTheme(_moveDownButton);
@@ -542,8 +585,11 @@ public sealed partial class MainForm : Form
         ApplyNeutralButtonTheme(_applyClickIntervalButton);
         ApplyNeutralButtonTheme(_applyAfterDelayButton);
         ApplyNeutralButtonTheme(_stopButton);
+        ApplyNeutralButtonTheme(_restartButton);
+        ApplyNeutralButtonTheme(_calibrateRegionButton);
 
         ApplyAccentButtonTheme(_saveButton, theme.Primary);
+        ApplyAccentButtonTheme(_saveAsButton, theme.SettingsAccent);
         ApplyAccentButtonTheme(_loadButton, theme.HelpAccent);
         ApplyAccentButtonTheme(_moveUpButton, theme.Primary);
         ApplyAccentButtonTheme(_moveDownButton, theme.Primary);
@@ -554,6 +600,7 @@ public sealed partial class MainForm : Form
         ApplyAccentButtonTheme(_applyClickIntervalButton, theme.Primary);
         ApplyAccentButtonTheme(_applyAfterDelayButton, theme.HelpAccent);
         ApplyAccentButtonTheme(_stopButton, theme.DangerAccent);
+        ApplyAccentButtonTheme(_calibrateRegionButton, theme.CaptureAccent);
         ApplyPrimaryButtonTheme(_startPauseButton);
         UpdateCaptureButton();
 
@@ -617,23 +664,52 @@ public sealed partial class MainForm : Form
             return;
         }
 
-        _captureMode = !_captureMode;
+        if (_captureMode is CaptureMode.CloudRegionTopLeft
+            or CaptureMode.CloudRegionBottomRight)
+        {
+            _captureMode = CaptureMode.Idle;
+            _cloudRegionTopLeft = null;
+        }
+        else if (_captureMode == CaptureMode.PointCapture)
+        {
+            var added = _points.Count - _captureSessionStartCount;
+            _captureMode = CaptureMode.Idle;
+            SetStatus($"采点已结束，本次新增 {added} 个，共 {_points.Count} 个点位。");
+        }
+        else
+        {
+            _captureSessionStartCount = _points.Count;
+            _captureMode = CaptureMode.PointCapture;
+        }
+
         UpdateCaptureButton();
-        SetStatus(
-            _captureMode
-                ? $"采点模式已开启，将鼠标移到目标位置后按 {CaptureHotKeyText}。"
-                : "采点模式已关闭。");
+        if (_captureMode == CaptureMode.PointCapture)
+        {
+            SetStatus($"采点模式已开启，将鼠标移到目标位置后按 {CaptureHotKeyText}。");
+        }
     }
 
     private void CaptureCurrentPoint()
     {
-        if (!_captureMode || _executionState != ExecutionState.Idle)
+        if (_executionState != ExecutionState.Idle)
         {
             return;
         }
 
         try
         {
+            if (_captureMode is CaptureMode.CloudRegionTopLeft
+                or CaptureMode.CloudRegionBottomRight)
+            {
+                CaptureCloudRegionCorner();
+                return;
+            }
+
+            if (_captureMode != CaptureMode.PointCapture)
+            {
+                return;
+            }
+
             var captured = _monitorService.CaptureCursor();
             var point = new ClickPoint
             {
@@ -643,6 +719,22 @@ public sealed partial class MainForm : Form
                 MonitorBounds = captured.MonitorBounds,
                 CapturedDpi = captured.Dpi
             };
+            if (_cloudDesktopEnabledCheckBox.Checked)
+            {
+                if (_cloudDesktopRegion is null)
+                {
+                    ShowError("请先校准云桌面区域，再进行采点。");
+                    return;
+                }
+
+                var relative = CloudDesktopCoordinateService.ToRelative(
+                    _cloudDesktopRegion,
+                    captured.X,
+                    captured.Y);
+                point.RelativeX = relative.X;
+                point.RelativeY = relative.Y;
+            }
+
             PointTimingService.ApplyDefaults(
                 point,
                 decimal.ToInt32(_defaultClickIntervalInput.Value),
@@ -737,12 +829,48 @@ public sealed partial class MainForm : Form
         try
         {
             CommitGridChanges();
-            var path = _profileService.Save(CreateProfileSnapshot());
+            var path = _currentProfilePath is null
+                ? _profileService.Save(CreateProfileSnapshot())
+                : _profileService.Save(CreateProfileSnapshot(), _currentProfilePath);
+            _currentProfilePath = path;
             SetStatus($"配置已保存：{path}");
         }
         catch (Exception exception)
         {
             ShowError($"保存配置失败：{exception.Message}");
+        }
+    }
+
+    private void SaveProfileAs()
+    {
+        using var dialog = new SaveFileDialog
+        {
+            Title = "另存连点器配置",
+            Filter = "连点器配置 (*.json)|*.json",
+            InitialDirectory = _currentProfilePath is null
+                ? _profileService.ProfilesDirectory
+                : Path.GetDirectoryName(_currentProfilePath),
+            FileName = $"{_profileNameTextBox.Text.Trim()}.json",
+            AddExtension = true,
+            DefaultExt = "json",
+            OverwritePrompt = true
+        };
+
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        try
+        {
+            CommitGridChanges();
+            var path = _profileService.Save(CreateProfileSnapshot(), dialog.FileName);
+            _currentProfilePath = path;
+            SetStatus($"配置已另存为：{path}");
+        }
+        catch (Exception exception)
+        {
+            ShowError($"另存配置失败：{exception.Message}");
         }
     }
 
@@ -769,6 +897,8 @@ public sealed partial class MainForm : Form
         }
 
         ApplyProfile(result.Profile!);
+        _currentProfilePath = dialog.FileName;
+        ClearExecutionCheckpoint();
         SetStatus($"已加载配置：{dialog.FileName}");
     }
 
@@ -777,7 +907,7 @@ public sealed partial class MainForm : Form
         CommitGridChanges();
         return new ClickProfile
         {
-            Version = 2,
+            Version = 3,
             Name = string.IsNullOrWhiteSpace(_profileNameTextBox.Text)
                 ? "默认方案"
                 : _profileNameTextBox.Text.Trim(),
@@ -785,6 +915,16 @@ public sealed partial class MainForm : Form
             LoopDelayMs = decimal.ToInt32(_loopDelayInput.Value),
             DefaultClickIntervalMs = decimal.ToInt32(_defaultClickIntervalInput.Value),
             DefaultAfterDelayMs = decimal.ToInt32(_defaultAfterDelayInput.Value),
+            CoordinateMode = _cloudDesktopEnabledCheckBox.Checked
+                ? CoordinateMode.CloudDesktopRegion
+                : CoordinateMode.AbsoluteScreen,
+            CloudDesktopRegion = _cloudDesktopRegion,
+            ScreenStability = new ScreenStabilitySettings
+            {
+                Enabled = _cloudDesktopEnabledCheckBox.Checked
+                    && _waitForStableScreenCheckBox.Checked,
+                TimeoutMs = decimal.ToInt32(_stabilityTimeoutInput.Value) * 1000
+            },
             Points = _points.Select(ClonePoint).ToList()
         };
     }
@@ -805,6 +945,7 @@ public sealed partial class MainForm : Form
             decimal.ToInt32(_defaultAfterDelayInput.Maximum));
         _points = new BindingList<ClickPoint>(profile.Points.Select(ClonePoint).ToList());
         _pointBindingSource.DataSource = _points;
+        ApplyCloudDesktopProfile(profile);
         _pointGrid.Refresh();
     }
 
@@ -839,14 +980,21 @@ public sealed partial class MainForm : Form
     private void UpdateCaptureButton()
     {
         _captureButton.Text =
-            _captureMode ? "● 结束采点" : $"＋ 采点 ({CaptureHotKeyText})";
-        _captureButton.BackColor = _captureMode
+            _captureMode switch
+            {
+                CaptureMode.PointCapture => "● 结束采点",
+                CaptureMode.CloudRegionTopLeft => $"记录左上角 ({CaptureHotKeyText})",
+                CaptureMode.CloudRegionBottomRight => $"记录右下角 ({CaptureHotKeyText})",
+                _ => $"＋ 采点 ({CaptureHotKeyText})"
+            };
+        var active = _captureMode != CaptureMode.Idle;
+        _captureButton.BackColor = active
             ? _theme.AccentPressed(_theme.CaptureAccent)
             : _theme.AccentSurface(_theme.CaptureAccent);
-        _captureButton.FlatAppearance.BorderColor = _captureMode
+        _captureButton.FlatAppearance.BorderColor = active
             ? _theme.CaptureAccent
             : _theme.CaptureAccent;
-        _captureButton.FlatAppearance.MouseOverBackColor = _captureMode
+        _captureButton.FlatAppearance.MouseOverBackColor = active
             ? _theme.AccentPressed(_theme.CaptureAccent)
             : _theme.AccentHover(_theme.CaptureAccent);
         _captureButton.FlatAppearance.MouseDownBackColor =
@@ -967,6 +1115,8 @@ public sealed partial class MainForm : Form
             Enabled = point.Enabled,
             X = point.X,
             Y = point.Y,
+            RelativeX = point.RelativeX,
+            RelativeY = point.RelativeY,
             ClickCount = point.ClickCount,
             ClickIntervalMs = point.ClickIntervalMs,
             AfterDelayMs = point.AfterDelayMs,

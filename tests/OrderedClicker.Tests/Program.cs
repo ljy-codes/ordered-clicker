@@ -68,6 +68,12 @@ internal static class Program
                 return Task.CompletedTask;
             }),
             ("ClickExecutionEngine", ClickExecutionEngineTests.RunAsync),
+            ("ScreenStabilityDetector", ScreenStabilityDetectorTests.RunAsync),
+            ("ExecutionReliabilityService", () =>
+            {
+                ExecutionReliabilityServiceTests.Run();
+                return Task.CompletedTask;
+            }),
             ("ProfileService", () =>
             {
                 ProfileServiceTests.Run();

@@ -34,6 +34,7 @@ public sealed partial class MainForm
 
         var selectedSettings = new AppSettings
         {
+            Version = 2,
             Theme = dialog.SelectedThemeId,
             CaptureHotKey = dialog.CaptureHotKey,
             StartPauseHotKey = dialog.StartPauseHotKey,
@@ -136,6 +137,7 @@ public sealed partial class MainForm
     {
         return new AppSettings
         {
+            Version = settings.Version,
             Theme = settings.Theme,
             CaptureHotKey = settings.CaptureHotKey,
             StartPauseHotKey = settings.StartPauseHotKey,
@@ -157,6 +159,7 @@ public sealed partial class MainForm
         private readonly HotKeyInput _startPauseHotKeyInput;
         private readonly HotKeyInput _stopHotKeyInput;
         private readonly Button _restoreDefaultHotKeysButton = new();
+        private readonly Button _compatibilityHotKeysButton = new();
         private readonly FlowLayoutPanel _footerPanel = new();
         private readonly Button _saveButton = new();
         private readonly Button _cancelButton = new();
@@ -278,17 +281,23 @@ public sealed partial class MainForm
             _hotKeyTitleLabel.Text = "全局快捷键";
             _hotKeyTitleLabel.Margin = new Padding(0, 5, 0, 0);
             _hotKeySubtitleLabel.AutoSize = true;
-            _hotKeySubtitleLabel.Text = "选中输入框后直接按新组合键，至少包含一个修饰键。";
+            _hotKeySubtitleLabel.Text =
+                "默认使用 F6/F7/F8；也可切换兼容组合或直接按键自定义。";
             _hotKeySubtitleLabel.Margin = new Padding(0, 8, 0, 0);
 
             ConfigureHotKeyInput(_captureHotKeyInput);
             ConfigureHotKeyInput(_startPauseHotKeyInput);
             ConfigureHotKeyInput(_stopHotKeyInput);
             _restoreDefaultHotKeysButton.Name = "RestoreDefaultHotKeysButton";
-            ConfigureDialogButton(_restoreDefaultHotKeysButton, "恢复默认快捷键", false);
-            _restoreDefaultHotKeysButton.Width = 138;
+            ConfigureDialogButton(_restoreDefaultHotKeysButton, "简洁模式", false);
+            _restoreDefaultHotKeysButton.Width = 106;
             _restoreDefaultHotKeysButton.Margin = new Padding(0, 5, 0, 0);
             _restoreDefaultHotKeysButton.Click += (_, _) => RestoreDefaultHotKeys();
+            _compatibilityHotKeysButton.Name = "CompatibilityHotKeysButton";
+            ConfigureDialogButton(_compatibilityHotKeysButton, "兼容模式", false);
+            _compatibilityHotKeysButton.Width = 106;
+            _compatibilityHotKeysButton.Margin = new Padding(8, 5, 0, 0);
+            _compatibilityHotKeysButton.Click += (_, _) => UseCompatibilityHotKeys();
 
             _hotKeyPanel.Controls.Add(_hotKeyTitleLabel, 0, 0);
             _hotKeyPanel.SetColumnSpan(_hotKeyTitleLabel, 1);
@@ -298,6 +307,7 @@ public sealed partial class MainForm
             AddHotKeyRow(2, "开始 / 暂停", _startPauseHotKeyInput);
             AddHotKeyRow(3, "停止", _stopHotKeyInput);
             _hotKeyPanel.Controls.Add(_restoreDefaultHotKeysButton, 1, 4);
+            _hotKeyPanel.Controls.Add(_compatibilityHotKeysButton, 2, 4);
         }
 
         private void AddHotKeyRow(int row, string labelText, HotKeyInput input)
@@ -345,6 +355,14 @@ public sealed partial class MainForm
             _captureHotKeyInput.Binding = HotKeyBindingService.DefaultCapture;
             _startPauseHotKeyInput.Binding = HotKeyBindingService.DefaultStartPause;
             _stopHotKeyInput.Binding = HotKeyBindingService.DefaultStop;
+        }
+
+        private void UseCompatibilityHotKeys()
+        {
+            _captureHotKeyInput.Binding = HotKeyBindingService.CompatibilityCapture;
+            _startPauseHotKeyInput.Binding =
+                HotKeyBindingService.CompatibilityStartPause;
+            _stopHotKeyInput.Binding = HotKeyBindingService.CompatibilityStop;
         }
 
         private static void ConfigureDialogButton(Button button, string text, bool primary)
@@ -410,6 +428,7 @@ public sealed partial class MainForm
             ApplyDialogButtonTheme(_saveButton, theme, true);
             ApplyDialogButtonTheme(_cancelButton, theme, false);
             ApplyDialogButtonTheme(_restoreDefaultHotKeysButton, theme, false);
+            ApplyDialogButtonTheme(_compatibilityHotKeysButton, theme, false);
             ApplyTitleBarTheme(theme);
             Invalidate(true);
         }

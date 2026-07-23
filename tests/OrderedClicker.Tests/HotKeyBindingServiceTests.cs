@@ -8,9 +8,10 @@ internal static class HotKeyBindingServiceTests
 {
     public static void Run()
     {
-        DefaultsUseControlAltFunctionKeys();
+        DefaultsUseSimpleFunctionKeys();
         FormatsModifiersInStableOrder();
-        RejectsBindingsWithoutModifiers();
+        AllowsSafeFunctionKeysWithoutModifiers();
+        RejectsUnsafeKeysWithoutModifiers();
         RejectsModifierAliasesStoredAsKeys();
         RejectsDuplicateBindings();
         FailedReplacementRestoresPreviousRegistrations();
@@ -18,20 +19,20 @@ internal static class HotKeyBindingServiceTests
         FailedReplacementTracksPartialRestore();
     }
 
-    private static void DefaultsUseControlAltFunctionKeys()
+    private static void DefaultsUseSimpleFunctionKeys()
     {
         TestAssert.Equal(
-            "Ctrl+Alt+F8",
+            "F6",
             HotKeyBindingService.Format(HotKeyBindingService.DefaultCapture),
-            "采点默认快捷键应减少与单独功能键的冲突");
+            "采点默认快捷键应简单");
         TestAssert.Equal(
-            "Ctrl+Alt+F9",
+            "F7",
             HotKeyBindingService.Format(HotKeyBindingService.DefaultStartPause),
-            "开始暂停默认快捷键应减少与单独功能键的冲突");
+            "开始暂停默认快捷键应简单");
         TestAssert.Equal(
-            "Ctrl+Alt+F10",
+            "F8",
             HotKeyBindingService.Format(HotKeyBindingService.DefaultStop),
-            "停止默认快捷键应减少与单独功能键的冲突");
+            "停止默认快捷键应简单");
     }
 
     private static void FormatsModifiersInStableOrder()
@@ -49,14 +50,23 @@ internal static class HotKeyBindingServiceTests
             "快捷键显示顺序应稳定");
     }
 
-    private static void RejectsBindingsWithoutModifiers()
+    private static void AllowsSafeFunctionKeysWithoutModifiers()
     {
         var valid = HotKeyBindingService.Validate(
             new HotKeyBinding(Keys.F8, ShortcutModifiers.None),
             out var error);
 
-        TestAssert.True(!valid, "单独功能键应被拒绝");
-        TestAssert.True(error.Contains("修饰键"), "错误信息应说明需要修饰键");
+        TestAssert.True(valid, $"F6 到 F12 应允许单键使用：{error}");
+    }
+
+    private static void RejectsUnsafeKeysWithoutModifiers()
+    {
+        var valid = HotKeyBindingService.Validate(
+            new HotKeyBinding(Keys.A, ShortcutModifiers.None),
+            out var error);
+
+        TestAssert.True(!valid, "普通字母不能作为无修饰键全局快捷键");
+        TestAssert.True(error.Contains("F6"), "错误信息应说明可用单键范围");
     }
 
     private static void RejectsModifierAliasesStoredAsKeys()
@@ -112,11 +122,11 @@ internal static class HotKeyBindingServiceTests
             "unregister:1001|unregister:1002|unregister:1003|"
             + "register:1001:Ctrl+Shift+F6|register:1002:Ctrl+Shift+F7|"
             + "unregister:1001|"
-            + "register:1001:Ctrl+Alt+F8|register:1002:Ctrl+Alt+F9|register:1003:Ctrl+Alt+F10",
+            + "register:1001:F6|register:1002:F7|register:1003:F8",
             string.Join("|", registrar.Events),
             "注册失败后应释放部分新快捷键并恢复旧快捷键");
         TestAssert.Equal(
-            "Ctrl+Alt+F8",
+            "F6",
             HotKeyBindingService.Format(coordinator.RegisteredBindings[0].Binding),
             "失败后协调器应保留原注册状态");
     }

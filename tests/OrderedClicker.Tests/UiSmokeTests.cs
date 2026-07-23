@@ -18,6 +18,8 @@ internal static class UiSmokeTests
         AssertThemeSettingsEntry(form);
         AssertSettingsDisabledDuringExecution(form);
         AssertGlobalTimingControls(form);
+        AssertCloudDesktopControls(form);
+        AssertSaveCommands(form);
         AssertGlobalTimingApplication(form);
         AssertDefaultHotKeyText(form);
         AssertUnchangedHotKeysAreDetected();
@@ -27,6 +29,35 @@ internal static class UiSmokeTests
         AssertThemePreviewCancelAndSave();
         AssertUsageHelpDialog(form);
         AssertMinimumWindowLayout();
+    }
+
+    private static void AssertCloudDesktopControls(MainForm form)
+    {
+        var names = EnumerateControls(form)
+            .Select(control => control.Name)
+            .ToHashSet(StringComparer.Ordinal);
+
+        TestAssert.True(names.Contains("CloudDesktopEnabledCheckBox"),
+            "主窗体应包含云桌面增强开关");
+        TestAssert.True(names.Contains("CalibrateRegionButton"),
+            "主窗体应包含云桌面区域校准按钮");
+        TestAssert.True(names.Contains("CloudRegionStatusLabel"),
+            "主窗体应显示云桌面校准状态");
+        TestAssert.True(names.Contains("WaitForStableScreenCheckBox"),
+            "主窗体应包含画面稳定等待开关");
+        TestAssert.True(names.Contains("StabilityTimeoutInput"),
+            "主窗体应包含稳定等待超时设置");
+    }
+
+    private static void AssertSaveCommands(MainForm form)
+    {
+        var buttons = EnumerateControls(form).OfType<Button>().ToList();
+        TestAssert.True(buttons.Any(button => button.Name == "SaveButton"),
+            "主窗体应保留保存按钮");
+        TestAssert.True(buttons.Any(button => button.Name == "SaveAsButton"),
+            "主窗体应包含另存为按钮");
+        TestAssert.True(buttons.Any(button => button.Name == "LoadButton"),
+            "主窗体应保留加载按钮");
     }
 
     public static void Render(string outputPath)
@@ -434,15 +465,15 @@ internal static class UiSmokeTests
                 .Select(item => item.Text));
 
         TestAssert.True(
-            text.Contains("Ctrl+Alt+F8")
-            && text.Contains("Ctrl+Alt+F9")
-            && text.Contains("Ctrl+Alt+F10"),
-            "主界面按钮和提示应显示默认组合快捷键");
+            text.Contains("F6")
+            && text.Contains("F7")
+            && text.Contains("F8"),
+            "主界面按钮和提示应显示默认简洁快捷键");
         TestAssert.True(
-            statusText.Contains("Ctrl+Alt+F8")
-            && statusText.Contains("Ctrl+Alt+F9")
-            && statusText.Contains("Ctrl+Alt+F10"),
-            "状态栏应显示默认组合快捷键");
+            statusText.Contains("F6")
+            && statusText.Contains("F7")
+            && statusText.Contains("F8"),
+            "状态栏应显示默认简洁快捷键");
     }
 
     private static void AssertUnchangedHotKeysAreDetected()
@@ -589,10 +620,10 @@ internal static class UiSmokeTests
         TestAssert.True(dialogOpened, "点击使用说明按钮后应打开说明弹窗");
         TestAssert.True(hasScrollableBody, "使用说明正文应只读且可滚动");
         TestAssert.True(
-            dialogText.Contains("Ctrl+Alt+F8")
-            && dialogText.Contains("Ctrl+Alt+F9")
-            && dialogText.Contains("Ctrl+Alt+F10"),
-            "使用说明应包含当前组合快捷键说明");
+            dialogText.Contains("F6")
+            && dialogText.Contains("F7")
+            && dialogText.Contains("F8"),
+            "使用说明应包含当前快捷键说明");
         TestAssert.True(
             dialogText.Contains("缩放") && dialogText.Contains("重新采点"),
             "使用说明应包含屏幕缩放注意事项");

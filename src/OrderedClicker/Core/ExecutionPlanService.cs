@@ -38,7 +38,18 @@ public static class ExecutionPlanService
             TotalLoops = profile.TotalLoops,
             LoopDelayMs = profile.LoopDelayMs,
             PlannedPointExecutionCount = plannedPointExecutions,
-            PlannedClickCount = checked(clicksPerLoop * profile.TotalLoops)
+            PlannedClickCount = checked(clicksPerLoop * profile.TotalLoops),
+            ScreenStability = new ScreenStabilitySettings
+            {
+                Enabled = profile.ScreenStability.Enabled,
+                SampleIntervalMs = profile.ScreenStability.SampleIntervalMs,
+                StableDurationMs = profile.ScreenStability.StableDurationMs,
+                TimeoutMs = profile.ScreenStability.TimeoutMs,
+                DifferenceTolerance = profile.ScreenStability.DifferenceTolerance
+            },
+            StabilityRegion = profile.CoordinateMode == CoordinateMode.CloudDesktopRegion
+                ? profile.CloudDesktopRegion!.Bounds
+                : virtualScreen
         };
     }
 

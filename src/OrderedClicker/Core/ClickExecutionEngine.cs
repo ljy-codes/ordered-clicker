@@ -8,13 +8,16 @@ public sealed class ClickExecutionEngine
 {
     private readonly IMouseController _mouseController;
     private readonly Func<TimeSpan, CancellationToken, Task> _delay;
+    private readonly ScreenStabilityDetector? _stabilityDetector;
 
     public ClickExecutionEngine(
         IMouseController mouseController,
-        Func<TimeSpan, CancellationToken, Task>? delay = null)
+        Func<TimeSpan, CancellationToken, Task>? delay = null,
+        ScreenStabilityDetector? stabilityDetector = null)
     {
         _mouseController = mouseController;
         _delay = delay ?? Task.Delay;
+        _stabilityDetector = stabilityDetector;
     }
 
     public async Task ExecuteAsync(
@@ -136,6 +139,36 @@ public sealed class ClickExecutionEngine
                     }
 
                     await DelayAsync(point.AfterDelayMs, cancellationToken);
+
+                    if (plan.ScreenStability.Enabled
+                        && _stabilityDetector is not null)
+                    {
+                        var stability = await _stabilityDetector.WaitForStableAsync(
+                            plan.StabilityRegion,
+                            plan.ScreenStability,
+                            cancellationToken);
+                        if (stability == ScreenStabilityResult.TimedOut)
+                        {
+                            pauseGate.Pause();
+                            progress?.Report(new ExecutionProgress(
+                                loopIndex + 1,
+                                plan.TotalLoops,
+                                pointIndex + 1,
+                                plan.Points.Count,
+                                point.ClickCount,
+                                point.ClickCount)
+                            {
+                                SourceIndex = point.SourceIndex,
+                                CompletedPointExecutionCount = completedPoints,
+                                PlannedPointExecutionCount = plan.PlannedPointExecutionCount,
+                                CompletedClickCount = completedClicks,
+                                PlannedClickCount = plan.PlannedClickCount,
+                                RequiresUserContinue = true,
+                                Message = $"点位 {point.SourceIndex + 1} 后画面未稳定"
+                            });
+                            await pauseGate.WaitIfPausedAsync(cancellationToken);
+                        }
+                    }
                 }
 
                 if (loopIndex + 1 < plan.TotalLoops)

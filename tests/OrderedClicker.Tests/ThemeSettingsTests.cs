@@ -13,7 +13,53 @@ internal static class ThemeSettingsTests
         SettingsRoundTripPreservesTheme();
         SettingsRoundTripPreservesHotKeys();
         LegacySettingsUseDefaultHotKeys();
+        MigratesLegacyDefaultHotKeysButKeepsCustomBindings();
         MissingOrInvalidSettingsUseAurora();
+    }
+
+    private static void MigratesLegacyDefaultHotKeysButKeepsCustomBindings()
+    {
+        var directory = CreateTemporaryDirectory();
+        try
+        {
+            var path = Path.Combine(directory, "settings.json");
+            File.WriteAllText(path, """
+                {
+                  "version": 1,
+                  "theme": "aurora",
+                  "captureHotKey": { "key": "F8", "modifiers": "control, alt" },
+                  "startPauseHotKey": { "key": "F9", "modifiers": "control, alt" },
+                  "stopHotKey": { "key": "F10", "modifiers": "control, alt" }
+                }
+                """);
+
+            var migrated = new SettingsService(path).Load();
+
+            TestAssert.Equal(HotKeyBindingService.DefaultCapture, migrated.CaptureHotKey,
+                "旧版默认采点键应迁移到简洁模式");
+            TestAssert.True(migrated.RequiresSaveAfterLoad,
+                "迁移后的设置应在快捷键注册成功后保存");
+
+            File.WriteAllText(path, """
+                {
+                  "version": 1,
+                  "theme": "aurora",
+                  "captureHotKey": { "key": "F6", "modifiers": "control, shift" },
+                  "startPauseHotKey": { "key": "F7", "modifiers": "control, shift" },
+                  "stopHotKey": { "key": "F8", "modifiers": "control, shift" }
+                }
+                """);
+
+            var custom = new SettingsService(path).Load();
+            TestAssert.Equal(
+                new HotKeyBinding(Keys.F6, ShortcutModifiers.Control | ShortcutModifiers.Shift),
+                custom.CaptureHotKey,
+                "用户自定义快捷键不能被迁移覆盖");
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
     }
 
     private static void ThemeCatalogContainsFiveReadableThemes()

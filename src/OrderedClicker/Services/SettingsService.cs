@@ -42,6 +42,22 @@ public sealed class SettingsService
                 return new AppSettings();
             }
 
+            if (settings.Version < 2)
+            {
+                if (settings.CaptureHotKey == HotKeyBindingService.CompatibilityCapture
+                    && settings.StartPauseHotKey
+                    == HotKeyBindingService.CompatibilityStartPause
+                    && settings.StopHotKey == HotKeyBindingService.CompatibilityStop)
+                {
+                    settings.CaptureHotKey = HotKeyBindingService.DefaultCapture;
+                    settings.StartPauseHotKey = HotKeyBindingService.DefaultStartPause;
+                    settings.StopHotKey = HotKeyBindingService.DefaultStop;
+                }
+
+                settings.Version = 2;
+                settings.RequiresSaveAfterLoad = true;
+            }
+
             if (!HotKeyBindingService.ValidateSet(
                     settings.CaptureHotKey,
                     settings.StartPauseHotKey,
@@ -78,5 +94,6 @@ public sealed class SettingsService
         var json = JsonSerializer.Serialize(settings, JsonOptions);
         File.WriteAllText(temporary, json, new UTF8Encoding(false));
         File.Move(temporary, SettingsPath, true);
+        settings.RequiresSaveAfterLoad = false;
     }
 }

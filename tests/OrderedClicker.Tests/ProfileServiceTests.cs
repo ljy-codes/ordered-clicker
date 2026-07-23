@@ -8,7 +8,22 @@ internal static class ProfileServiceTests
     public static void Run()
     {
         RoundTripsAllProfileFields();
+        SavesToExplicitPath();
         ReturnsControlledErrorForMalformedJson();
+    }
+
+    private static void SavesToExplicitPath()
+    {
+        using var directory = new TemporaryDirectory();
+        var service = new ProfileService(directory.Path);
+        var path = System.IO.Path.Combine(directory.Path, "自定义位置", "方案.json");
+
+        var savedPath = service.Save(
+            new ClickProfile { Name = "另存为方案" },
+            path);
+
+        TestAssert.Equal(path, savedPath, "另存为应返回用户选择的路径");
+        TestAssert.True(File.Exists(path), "另存为文件应存在");
     }
 
     private static void RoundTripsAllProfileFields()

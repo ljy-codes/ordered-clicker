@@ -17,4 +17,8 @@ public sealed class ExecutionPlan
     public long PlannedPointExecutionCount { get; init; }
 
     public long PlannedClickCount { get; init; }
+
+    public required ScreenStabilitySettings ScreenStability { get; init; }
+
+    public required ScreenBounds StabilityRegion { get; init; }
 }

@@ -27,12 +27,40 @@ public sealed class ProfileService
         Directory.CreateDirectory(ProfilesDirectory);
         var fileName = SanitizeFileName(profile.Name);
         var destination = Path.Combine(ProfilesDirectory, $"{fileName}.json");
+        return Save(profile, destination);
+    }
+
+    public string Save(ClickProfile profile, string destination)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        if (string.IsNullOrWhiteSpace(destination))
+        {
+            throw new ArgumentException("保存路径不能为空。", nameof(destination));
+        }
+
+        var directory = Path.GetDirectoryName(destination);
+        if (string.IsNullOrWhiteSpace(directory))
+        {
+            throw new InvalidOperationException("保存路径无效。");
+        }
+
+        Directory.CreateDirectory(directory);
         var temporary = destination + ".tmp";
         var json = JsonSerializer.Serialize(profile, JsonOptions);
 
-        File.WriteAllText(temporary, json, new UTF8Encoding(false));
-        File.Move(temporary, destination, true);
-        return destination;
+        try
+        {
+            File.WriteAllText(temporary, json, new UTF8Encoding(false));
+            File.Move(temporary, destination, true);
+            return destination;
+        }
+        finally
+        {
+            if (File.Exists(temporary))
+            {
+                File.Delete(temporary);
+            }
+        }
     }
 
     public ProfileLoadResult Load(string path)
