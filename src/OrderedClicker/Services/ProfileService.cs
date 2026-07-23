@@ -69,6 +69,40 @@ public sealed class ProfileService
         return Save(profile, destination);
     }
 
+    public string GetAvailableImportCopyPath(string profileName, string sourcePath)
+    {
+        if (string.IsNullOrWhiteSpace(sourcePath))
+        {
+            throw new ArgumentException("导入来源路径不能为空。", nameof(sourcePath));
+        }
+
+        var baseName = $"{SanitizeFileName(profileName)}-副本";
+        var candidate = Path.Combine(ProfilesDirectory, $"{baseName}.json");
+        var suffix = 2;
+        while (PathsEqual(candidate, sourcePath) || File.Exists(candidate))
+        {
+            candidate = Path.Combine(ProfilesDirectory, $"{baseName}-{suffix}.json");
+            suffix++;
+        }
+
+        return candidate;
+    }
+
+    public static bool PathsEqual(string first, string second)
+    {
+        if (string.IsNullOrWhiteSpace(first) || string.IsNullOrWhiteSpace(second))
+        {
+            return false;
+        }
+
+        var normalizedFirst = Path.TrimEndingDirectorySeparator(Path.GetFullPath(first));
+        var normalizedSecond = Path.TrimEndingDirectorySeparator(Path.GetFullPath(second));
+        return string.Equals(
+            normalizedFirst,
+            normalizedSecond,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
     public ProfileLoadResult Import(string path)
     {
         var result = Load(path);
@@ -159,6 +193,11 @@ public sealed class ProfileService
         {
             var point = profile.Points[index];
             var displayIndex = index + 1;
+            if (point is null)
+            {
+                return $"点位 {displayIndex} 内容为空。";
+            }
+
             if (point.ClickCount is < 1 or > 100000)
             {
                 return $"点位 {displayIndex} 的点击次数必须在 1 到 100000 之间。";

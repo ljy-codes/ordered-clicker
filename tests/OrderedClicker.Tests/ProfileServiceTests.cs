@@ -9,10 +9,12 @@ internal static class ProfileServiceTests
     {
         RoundTripsAllProfileFields();
         SavesToExplicitPath();
+        SuggestsDistinctPathForImportedCopy();
         ExportsAndImportsCompleteProfile();
         RejectsUnsupportedFutureVersion();
         RejectsInvalidPointTiming();
         RejectsInvalidCloudRelativeCoordinate();
+        RejectsNullPointWithControlledError();
         ReturnsControlledErrorForMalformedJson();
     }
 
@@ -103,6 +105,28 @@ internal static class ProfileServiceTests
         TestAssert.True(File.Exists(path), "另存为文件应存在");
     }
 
+    private static void SuggestsDistinctPathForImportedCopy()
+    {
+        using var directory = new TemporaryDirectory();
+        var service = new ProfileService(directory.Path);
+        var sourcePath = System.IO.Path.Combine(directory.Path, "日报方案.json");
+        File.WriteAllText(sourcePath, "source", System.Text.Encoding.UTF8);
+
+        var suggestedPath = service.GetAvailableImportCopyPath("日报方案", sourcePath);
+
+        TestAssert.True(
+            !ProfileService.PathsEqual(suggestedPath, sourcePath),
+            "导入副本的建议路径不能与来源文件相同");
+        TestAssert.Equal(
+            directory.Path,
+            System.IO.Path.GetDirectoryName(suggestedPath)!,
+            "导入副本应默认保存到本机方案目录");
+        TestAssert.True(
+            System.IO.Path.GetFileNameWithoutExtension(suggestedPath)
+                .Contains("副本", StringComparison.Ordinal),
+            "导入副本的建议文件名应明确标识副本");
+    }
+
     private static void RoundTripsAllProfileFields()
     {
         using var directory = new TemporaryDirectory();
@@ -158,6 +182,35 @@ internal static class ProfileServiceTests
         TestAssert.True(!result.Success, "损坏 JSON 应返回失败结果");
         TestAssert.True(result.Profile is null, "损坏 JSON 不应返回配置对象");
         TestAssert.True(!string.IsNullOrWhiteSpace(result.ErrorMessage), "失败结果应包含错误信息");
+    }
+
+    private static void RejectsNullPointWithControlledError()
+    {
+        using var directory = new TemporaryDirectory();
+        var service = new ProfileService(directory.Path);
+        var path = System.IO.Path.Combine(directory.Path, "空点位.json");
+        File.WriteAllText(
+            path,
+            """
+            {
+              "Version": 3,
+              "Name": "空点位方案",
+              "TotalLoops": 1,
+              "LoopDelayMs": 0,
+              "DefaultClickIntervalMs": 1000,
+              "DefaultAfterDelayMs": 500,
+              "CoordinateMode": 0,
+              "Points": [null]
+            }
+            """,
+            System.Text.Encoding.UTF8);
+
+        var result = service.Import(path);
+
+        TestAssert.True(!result.Success, "空点位应返回受控失败结果");
+        TestAssert.True(
+            (result.ErrorMessage ?? string.Empty).Contains("点位 1", StringComparison.Ordinal),
+            "错误应指出空点位所在序号");
     }
 
     private static ClickProfile CreateCompleteProfile()

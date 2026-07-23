@@ -20,6 +20,7 @@ internal static class UiSmokeTests
         AssertGlobalTimingControls(form);
         AssertCloudDesktopControls(form);
         AssertSaveCommands(form);
+        AssertImportedCopyRequiresSaveAs(form);
         AssertGlobalTimingApplication(form);
         AssertDefaultHotKeyText(form);
         AssertUnchangedHotKeysAreDetected();
@@ -60,6 +61,45 @@ internal static class UiSmokeTests
             "主窗体应包含导入方案按钮");
         TestAssert.True(buttons.Any(button => button.Name == "ExportProfileButton"),
             "主窗体应包含导出方案按钮");
+    }
+
+    private static void AssertImportedCopyRequiresSaveAs(MainForm form)
+    {
+        var applyImportedProfile = typeof(MainForm).GetMethod(
+            "ApplyImportedProfile",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        var requiresSaveAsField = typeof(MainForm).GetField(
+            "_saveImportedProfileAsCopy",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        var importedSourcePathField = typeof(MainForm).GetField(
+            "_importedProfileSourcePath",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        var currentPathField = typeof(MainForm).GetField(
+            "_currentProfilePath",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+
+        TestAssert.True(applyImportedProfile is not null,
+            "主窗体应集中处理导入副本状态");
+        TestAssert.True(requiresSaveAsField is not null,
+            "导入副本首次保存应强制另存为");
+        TestAssert.True(importedSourcePathField is not null,
+            "导入副本应保留来源路径用于防覆盖");
+
+        var sourcePath = @"C:\profiles\source.json";
+        currentPathField!.SetValue(form, sourcePath);
+        applyImportedProfile!.Invoke(
+            form,
+            [new ClickProfile { Version = 3, Name = "导入副本" }, sourcePath]);
+
+        TestAssert.True(currentPathField.GetValue(form) is null,
+            "导入副本不应绑定来源文件路径");
+        TestAssert.True((bool)requiresSaveAsField!.GetValue(form)!,
+            "导入副本首次保存必须进入另存为");
+        TestAssert.True(
+            ProfileService.PathsEqual(
+                (string)importedSourcePathField!.GetValue(form)!,
+                sourcePath),
+            "导入副本应保留规范化来源路径");
     }
 
     public static void Render(string outputPath)
@@ -305,20 +345,38 @@ internal static class UiSmokeTests
 
     private static void AssertSettingsDisabledDuringExecution(MainForm form)
     {
-        var settingsButton = EnumerateControls(form)
+        var buttons = EnumerateControls(form)
             .OfType<Button>()
-            .Single(button => button.Name == "ThemeSettingsButton");
+            .ToList();
+        var guardedButtonNames = new[]
+        {
+            "ThemeSettingsButton",
+            "SaveButton",
+            "SaveAsButton",
+            "ImportProfileButton",
+            "ExportProfileButton"
+        };
         var method = typeof(MainForm).GetMethod(
             "SetConfigurationEnabled",
             BindingFlags.Instance | BindingFlags.NonPublic);
 
         method!.Invoke(form, [false]);
-        TestAssert.True(
-            !settingsButton.Enabled,
-            "执行期间应禁止修改主题和全局快捷键");
+        foreach (var buttonName in guardedButtonNames)
+        {
+            var button = buttons.Single(candidate => candidate.Name == buttonName);
+            TestAssert.True(
+                !button.Enabled,
+                $"执行期间应禁用 {buttonName}");
+        }
 
         method.Invoke(form, [true]);
-        TestAssert.True(settingsButton.Enabled, "执行结束后应恢复设置入口");
+        foreach (var buttonName in guardedButtonNames)
+        {
+            var button = buttons.Single(candidate => candidate.Name == buttonName);
+            TestAssert.True(
+                button.Enabled,
+                $"执行结束后应恢复 {buttonName}");
+        }
     }
 
     private static void AssertGlobalTimingControls(MainForm form)

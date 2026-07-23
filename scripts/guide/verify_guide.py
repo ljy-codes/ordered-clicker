@@ -212,6 +212,9 @@ def main(skip_video: bool = False) -> int:
     missing_terms = [term for term in prd_terms if term not in prd_text]
     if missing_terms:
         fail(f"PRD 缺少关键内容: {', '.join(missing_terms)}")
+    for term in ("有序连点器-视频演示.mp4", "下次直接加载"):
+        if term in prd_text:
+            fail(f"HTML 含非交付或过时内容: {term}")
     verify_local_links(prd_html)
     verify_local_links(required["演示靶场"][0])
 
@@ -219,6 +222,13 @@ def main(skip_video: bool = False) -> int:
     if len(pdf_reader.pages) < 15:
         fail(f"PDF 页数不足: {len(pdf_reader.pages)}")
     pdf_text = "\n".join(page.extract_text() or "" for page in pdf_reader.pages)
+    for term in (
+        "ordered-clicker-portable-v1.3.1.zip",
+        "有序连点器-视频演示.mp4",
+        "SHA256SUMS.txt",
+    ):
+        if term in pdf_text:
+            fail(f"PDF 含非交付文件: {term}")
     for term in (
         "采点模式",
         "点击次数",

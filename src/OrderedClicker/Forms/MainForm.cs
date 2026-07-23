@@ -78,6 +78,8 @@ public sealed partial class MainForm : Form
     private CloudDesktopRegion? _cloudDesktopRegion;
     private int _captureSessionStartCount;
     private string? _currentProfilePath;
+    private bool _saveImportedProfileAsCopy;
+    private string? _importedProfileSourcePath;
     private ExecutionPlan? _pendingExecutionPlan;
     private ExecutionCheckpoint _executionCheckpoint = ExecutionCheckpoint.Start;
     private bool _suspendHotKeyActions;
@@ -860,6 +862,12 @@ public sealed partial class MainForm : Form
 
     private void SaveProfile()
     {
+        if (_saveImportedProfileAsCopy)
+        {
+            SaveProfileAs();
+            return;
+        }
+
         try
         {
             CommitGridChanges();
@@ -867,6 +875,8 @@ public sealed partial class MainForm : Form
                 ? _profileService.Save(CreateProfileSnapshot())
                 : _profileService.Save(CreateProfileSnapshot(), _currentProfilePath);
             _currentProfilePath = path;
+            _saveImportedProfileAsCopy = false;
+            _importedProfileSourcePath = null;
             SetStatus($"配置已保存：{path}");
         }
         catch (Exception exception)
@@ -877,14 +887,27 @@ public sealed partial class MainForm : Form
 
     private void SaveProfileAs()
     {
+        var profileName = string.IsNullOrWhiteSpace(_profileNameTextBox.Text)
+            ? "默认方案"
+            : _profileNameTextBox.Text.Trim();
+        var importCopyPath =
+            _saveImportedProfileAsCopy && _importedProfileSourcePath is not null
+                ? _profileService.GetAvailableImportCopyPath(
+                    profileName,
+                    _importedProfileSourcePath)
+                : null;
         using var dialog = new SaveFileDialog
         {
             Title = "另存连点器配置",
             Filter = "连点器配置 (*.json)|*.json",
-            InitialDirectory = _currentProfilePath is null
-                ? _profileService.ProfilesDirectory
-                : Path.GetDirectoryName(_currentProfilePath),
-            FileName = $"{_profileNameTextBox.Text.Trim()}.json",
+            InitialDirectory = importCopyPath is not null
+                ? Path.GetDirectoryName(importCopyPath)
+                : _currentProfilePath is null
+                    ? _profileService.ProfilesDirectory
+                    : Path.GetDirectoryName(_currentProfilePath),
+            FileName = importCopyPath is not null
+                ? Path.GetFileName(importCopyPath)
+                : $"{profileName}.json",
             AddExtension = true,
             DefaultExt = "json",
             OverwritePrompt = true
@@ -895,11 +918,20 @@ public sealed partial class MainForm : Form
             return;
         }
 
+        if (_importedProfileSourcePath is not null
+            && ProfileService.PathsEqual(dialog.FileName, _importedProfileSourcePath))
+        {
+            ShowError("导入副本不能覆盖来源文件，请选择其他文件名。");
+            return;
+        }
+
         try
         {
             CommitGridChanges();
             var path = _profileService.Save(CreateProfileSnapshot(), dialog.FileName);
             _currentProfilePath = path;
+            _saveImportedProfileAsCopy = false;
+            _importedProfileSourcePath = null;
             SetStatus($"配置已另存为：{path}");
         }
         catch (Exception exception)
@@ -953,10 +985,17 @@ public sealed partial class MainForm : Form
             return;
         }
 
-        ApplyProfile(profile);
-        _currentProfilePath = null;
+        ApplyImportedProfile(profile, dialog.FileName);
         ClearExecutionCheckpoint();
         SetStatus($"已导入方案副本：{dialog.FileName}");
+    }
+
+    private void ApplyImportedProfile(ClickProfile profile, string sourcePath)
+    {
+        ApplyProfile(profile);
+        _currentProfilePath = null;
+        _saveImportedProfileAsCopy = true;
+        _importedProfileSourcePath = Path.GetFullPath(sourcePath);
     }
 
     private void ExportProfile()
