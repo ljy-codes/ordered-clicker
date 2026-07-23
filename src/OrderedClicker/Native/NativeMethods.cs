@@ -7,8 +7,11 @@ internal static class NativeMethods
     public const int WmHotKey = 0x0312;
     public const uint MonitorDefaultToNearest = 0x00000002;
     public const uint InputMouse = 0;
+    public const uint MouseEventMove = 0x0001;
     public const uint MouseEventLeftDown = 0x0002;
     public const uint MouseEventLeftUp = 0x0004;
+    public const uint MouseEventVirtualDesk = 0x4000;
+    public const uint MouseEventAbsolute = 0x8000;
     public const int DwmwaUseImmersiveDarkMode = 20;
     public const int DwmwaUseImmersiveDarkModeBefore20H1 = 19;
 

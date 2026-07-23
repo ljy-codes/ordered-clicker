@@ -1,5 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
+using OrderedClicker.Core;
+using OrderedClicker.Models;
 using OrderedClicker.Native;
 
 namespace OrderedClicker.Services;
@@ -8,10 +10,35 @@ public sealed class WindowsMouseController : IMouseController
 {
     public void MoveTo(int x, int y)
     {
-        if (!NativeMethods.SetCursorPos(x, y))
+        var bounds = SystemInformation.VirtualScreen;
+        MoveTo(x, y, new ScreenBounds(bounds.X, bounds.Y, bounds.Width, bounds.Height));
+    }
+
+    public void MoveTo(int x, int y, ScreenBounds virtualScreen)
+    {
+        var normalized = VirtualScreenCoordinateService.Normalize(x, y, virtualScreen);
+        for (var attempt = 1; attempt <= 3; attempt++)
         {
-            throw new Win32Exception(Marshal.GetLastWin32Error(), "移动鼠标失败。");
+            SendMouseEvent(
+                NativeMethods.MouseEventMove
+                | NativeMethods.MouseEventAbsolute
+                | NativeMethods.MouseEventVirtualDesk,
+                normalized.X,
+                normalized.Y);
+
+            Thread.Sleep(40);
+            if (NativeMethods.GetCursorPos(out var actual)
+                && Math.Abs(actual.X - x) <= 2
+                && Math.Abs(actual.Y - y) <= 2)
+            {
+                return;
+            }
         }
+
+        NativeMethods.GetCursorPos(out var finalActual);
+        throw new Win32Exception(
+            Marshal.GetLastWin32Error(),
+            $"鼠标未能移动到目标位置 ({x}, {y})，实际位置为 ({finalActual.X}, {finalActual.Y})。");
     }
 
     public void LeftClick()
@@ -25,7 +52,11 @@ public sealed class WindowsMouseController : IMouseController
         SendMouseEvent(NativeMethods.MouseEventLeftUp, throwOnFailure: false);
     }
 
-    private static void SendMouseEvent(uint flags, bool throwOnFailure = true)
+    private static void SendMouseEvent(
+        uint flags,
+        int dx = 0,
+        int dy = 0,
+        bool throwOnFailure = true)
     {
         var inputs = new[]
         {
@@ -36,6 +67,8 @@ public sealed class WindowsMouseController : IMouseController
                 {
                     Mouse = new NativeMethods.MouseInput
                     {
+                        Dx = dx,
+                        Dy = dy,
                         Flags = flags
                     }
                 }

@@ -10,6 +10,10 @@ public sealed class ClickPoint
 
     public int Y { get; set; }
 
+    public double? RelativeX { get; set; }
+
+    public double? RelativeY { get; set; }
+
     public int ClickCount { get; set; } = 1;
 
     public int ClickIntervalMs { get; set; } = 100;

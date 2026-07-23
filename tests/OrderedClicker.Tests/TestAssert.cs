@@ -17,4 +17,19 @@ internal static class TestAssert
             throw new InvalidOperationException($"{message}。期望：{expected}，实际：{actual}");
         }
     }
+
+    public static void Throws<TException>(Action action, string message)
+        where TException : Exception
+    {
+        try
+        {
+            action();
+        }
+        catch (TException)
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(message);
+    }
 }

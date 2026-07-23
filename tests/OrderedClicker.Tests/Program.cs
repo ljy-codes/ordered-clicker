@@ -42,6 +42,16 @@ internal static class Program
                 ProfileValidatorTests.Run();
                 return Task.CompletedTask;
             }),
+            ("CloudDesktopCoordinateService", () =>
+            {
+                CloudDesktopCoordinateServiceTests.Run();
+                return Task.CompletedTask;
+            }),
+            ("VirtualScreenCoordinateService", () =>
+            {
+                VirtualScreenCoordinateServiceTests.Run();
+                return Task.CompletedTask;
+            }),
             ("PointTimingService", () =>
             {
                 PointTimingServiceTests.Run();
