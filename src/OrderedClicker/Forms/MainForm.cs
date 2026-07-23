@@ -32,7 +32,8 @@ public sealed partial class MainForm : Form
     private readonly ToolTip _toolTip = new();
     private readonly bool _enableGlobalHotKeys;
 
-    private readonly TextBox _profileNameTextBox = new();
+    private readonly ComboBox _profileSelector = new();
+    private readonly Button _openProfilesDirectoryButton = new();
     private readonly NumericUpDown _totalLoopsInput = new();
     private readonly NumericUpDown _loopDelayInput = new();
     private readonly NumericUpDown _defaultClickIntervalInput = new();
@@ -80,6 +81,9 @@ public sealed partial class MainForm : Form
     private string? _currentProfilePath;
     private bool _saveImportedProfileAsCopy;
     private string? _importedProfileSourcePath;
+    private ClickProfile? _baselineProfile;
+    private string? _profileSelectorTextBeforeSelection;
+    private bool _suppressProfileSelection;
     private ExecutionPlan? _pendingExecutionPlan;
     private ExecutionCheckpoint _executionCheckpoint = ExecutionCheckpoint.Start;
     private bool _suspendHotKeyActions;
@@ -98,6 +102,7 @@ public sealed partial class MainForm : Form
         ConfigurePointGrid();
         WireEvents();
         ApplyProfile(new ClickProfile());
+        UpdateProfileBaseline();
         UpdateCaptureButton();
         SetExecutionState(ExecutionState.Idle);
         UpdateHotKeyText();
@@ -229,9 +234,16 @@ public sealed partial class MainForm : Form
             BackColor = _theme.Window
         };
 
-        _profileNameTextBox.Width = 200;
-        _profileNameTextBox.Text = "默认方案";
-        ConfigureInput(_profileNameTextBox);
+        _profileSelector.Name = "ProfileSelector";
+        _profileSelector.Width = 200;
+        _profileSelector.Text = "默认方案";
+        _profileSelector.DropDownStyle = ComboBoxStyle.DropDown;
+        _profileSelector.IntegralHeight = false;
+        _profileSelector.DropDownHeight = 280;
+        ConfigureInput(_profileSelector);
+        _openProfilesDirectoryButton.Name = "OpenProfilesDirectoryButton";
+        _openProfilesDirectoryButton.Text = "📁";
+        ConfigureCommandButton(_openProfilesDirectoryButton, 38);
         _totalLoopsInput.Minimum = 1;
         _totalLoopsInput.Maximum = 100000;
         _totalLoopsInput.Value = 1;
@@ -258,7 +270,8 @@ public sealed partial class MainForm : Form
         ConfigureCommandButton(_exportProfileButton, 78);
 
         fields.Controls.Add(CreateFieldLabel("方案名称"));
-        fields.Controls.Add(_profileNameTextBox);
+        fields.Controls.Add(_profileSelector);
+        fields.Controls.Add(_openProfilesDirectoryButton);
         fields.Controls.Add(CreateSpacer(12));
         fields.Controls.Add(CreateFieldLabel("总循环次数"));
         fields.Controls.Add(_totalLoopsInput);
@@ -497,6 +510,12 @@ public sealed partial class MainForm : Form
         _toolTip.SetToolTip(_stopButton, "立即停止倒计时、等待或点击任务。");
         _toolTip.SetToolTip(_saveAsButton, "将当前方案保存到指定位置。");
         _toolTip.SetToolTip(
+            _profileSelector,
+            "输入方案名称，或从下拉列表打开默认方案目录中的已保存方案。");
+        _toolTip.SetToolTip(
+            _openProfilesDirectoryButton,
+            "打开默认方案目录。");
+        _toolTip.SetToolTip(
             _importProfileButton,
             "从 JSON 文件导入方案副本，不会覆盖来源文件。");
         _toolTip.SetToolTip(
@@ -510,6 +529,13 @@ public sealed partial class MainForm : Form
         _clearButton.Click += (_, _) => ClearPoints();
         _saveButton.Click += (_, _) => SaveProfile();
         _saveAsButton.Click += (_, _) => SaveProfileAs();
+        _profileSelector.DropDown += (_, _) =>
+        {
+            _profileSelectorTextBeforeSelection = _profileSelector.Text;
+            RefreshProfileDirectory();
+        };
+        _profileSelector.SelectionChangeCommitted += (_, _) => SelectLocalProfile();
+        _openProfilesDirectoryButton.Click += (_, _) => OpenProfilesDirectory();
         _importProfileButton.Click += (_, _) => ImportProfile();
         _exportProfileButton.Click += (_, _) => ExportProfile();
         _themeSettingsButton.Click += (_, _) => ShowThemeSettings();
@@ -587,6 +613,7 @@ public sealed partial class MainForm : Form
             switch (control)
             {
                 case TextBox:
+                case ComboBox:
                 case NumericUpDown:
                     control.BackColor = theme.Input;
                     control.ForeColor = theme.Text;
@@ -611,6 +638,7 @@ public sealed partial class MainForm : Form
         ApplyNeutralButtonTheme(_saveAsButton);
         ApplyNeutralButtonTheme(_importProfileButton);
         ApplyNeutralButtonTheme(_exportProfileButton);
+        ApplyNeutralButtonTheme(_openProfilesDirectoryButton);
         ApplyNeutralButtonTheme(_moveUpButton);
         ApplyNeutralButtonTheme(_moveDownButton);
         ApplyNeutralButtonTheme(_deleteButton);
@@ -627,6 +655,7 @@ public sealed partial class MainForm : Form
         ApplyAccentButtonTheme(_saveAsButton, theme.SettingsAccent);
         ApplyAccentButtonTheme(_importProfileButton, theme.HelpAccent);
         ApplyAccentButtonTheme(_exportProfileButton, theme.CaptureAccent);
+        ApplyAccentButtonTheme(_openProfilesDirectoryButton, theme.CaptureAccent);
         ApplyAccentButtonTheme(_moveUpButton, theme.Primary);
         ApplyAccentButtonTheme(_moveDownButton, theme.Primary);
         ApplyAccentButtonTheme(_deleteButton, theme.DangerAccent);
@@ -860,36 +889,40 @@ public sealed partial class MainForm : Form
                 : $"已将 {_points.Count} 个点位的点后等待设为 {value} ms。");
     }
 
-    private void SaveProfile()
+    private bool SaveProfile()
     {
         if (_saveImportedProfileAsCopy)
         {
-            SaveProfileAs();
-            return;
+            return SaveProfileAs();
         }
 
         try
         {
             CommitGridChanges();
+            var profile = CreateProfileSnapshot();
             var path = _currentProfilePath is null
-                ? _profileService.Save(CreateProfileSnapshot())
-                : _profileService.Save(CreateProfileSnapshot(), _currentProfilePath);
+                ? _profileService.Save(profile)
+                : _profileService.Save(profile, _currentProfilePath);
             _currentProfilePath = path;
             _saveImportedProfileAsCopy = false;
             _importedProfileSourcePath = null;
+            UpdateProfileBaseline(profile);
+            RefreshProfileDirectory();
             SetStatus($"配置已保存：{path}");
+            return true;
         }
         catch (Exception exception)
         {
             ShowError($"保存配置失败：{exception.Message}");
+            return false;
         }
     }
 
-    private void SaveProfileAs()
+    private bool SaveProfileAs()
     {
-        var profileName = string.IsNullOrWhiteSpace(_profileNameTextBox.Text)
+        var profileName = string.IsNullOrWhiteSpace(_profileSelector.Text)
             ? "默认方案"
-            : _profileNameTextBox.Text.Trim();
+            : _profileSelector.Text.Trim();
         var importCopyPath =
             _saveImportedProfileAsCopy && _importedProfileSourcePath is not null
                 ? _profileService.GetAvailableImportCopyPath(
@@ -915,28 +948,33 @@ public sealed partial class MainForm : Form
 
         if (dialog.ShowDialog(this) != DialogResult.OK)
         {
-            return;
+            return false;
         }
 
         if (_importedProfileSourcePath is not null
             && ProfileService.PathsEqual(dialog.FileName, _importedProfileSourcePath))
         {
             ShowError("导入副本不能覆盖来源文件，请选择其他文件名。");
-            return;
+            return false;
         }
 
         try
         {
             CommitGridChanges();
-            var path = _profileService.Save(CreateProfileSnapshot(), dialog.FileName);
+            var profile = CreateProfileSnapshot();
+            var path = _profileService.Save(profile, dialog.FileName);
             _currentProfilePath = path;
             _saveImportedProfileAsCopy = false;
             _importedProfileSourcePath = null;
+            UpdateProfileBaseline(profile);
+            RefreshProfileDirectory();
             SetStatus($"配置已另存为：{path}");
+            return true;
         }
         catch (Exception exception)
         {
             ShowError($"另存配置失败：{exception.Message}");
+            return false;
         }
     }
 
@@ -996,6 +1034,7 @@ public sealed partial class MainForm : Form
         _currentProfilePath = null;
         _saveImportedProfileAsCopy = true;
         _importedProfileSourcePath = Path.GetFullPath(sourcePath);
+        UpdateProfileBaseline();
     }
 
     private void ExportProfile()
@@ -1007,7 +1046,7 @@ public sealed partial class MainForm : Form
             InitialDirectory = _currentProfilePath is null
                 ? Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
                 : Path.GetDirectoryName(_currentProfilePath),
-            FileName = $"{_profileNameTextBox.Text.Trim()}.json",
+            FileName = $"{_profileSelector.Text.Trim()}.json",
             AddExtension = true,
             DefaultExt = "json",
             OverwritePrompt = true
@@ -1036,9 +1075,9 @@ public sealed partial class MainForm : Form
         return new ClickProfile
         {
             Version = 3,
-            Name = string.IsNullOrWhiteSpace(_profileNameTextBox.Text)
+            Name = string.IsNullOrWhiteSpace(_profileSelector.Text)
                 ? "默认方案"
-                : _profileNameTextBox.Text.Trim(),
+                : _profileSelector.Text.Trim(),
             TotalLoops = decimal.ToInt32(_totalLoopsInput.Value),
             LoopDelayMs = decimal.ToInt32(_loopDelayInput.Value),
             DefaultClickIntervalMs = decimal.ToInt32(_defaultClickIntervalInput.Value),
@@ -1059,7 +1098,7 @@ public sealed partial class MainForm : Form
 
     private void ApplyProfile(ClickProfile profile)
     {
-        _profileNameTextBox.Text = profile.Name;
+        _profileSelector.Text = profile.Name;
         _totalLoopsInput.Value = Math.Clamp(profile.TotalLoops, 1, 100000);
         _loopDelayInput.Value = Math.Clamp(profile.LoopDelayMs, 0, 600000);
         var defaults = PointTimingService.ResolveDefaults(profile);

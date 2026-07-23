@@ -125,6 +125,24 @@ public sealed class ProfileService
             StringComparison.OrdinalIgnoreCase);
     }
 
+    public static ClickProfile CloneProfile(ClickProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        var json = JsonSerializer.Serialize(profile, JsonOptions);
+        return JsonSerializer.Deserialize<ClickProfile>(json, JsonOptions)
+               ?? throw new InvalidOperationException("无法创建方案快照。");
+    }
+
+    public static bool ProfilesEqual(ClickProfile first, ClickProfile second)
+    {
+        ArgumentNullException.ThrowIfNull(first);
+        ArgumentNullException.ThrowIfNull(second);
+        return string.Equals(
+            JsonSerializer.Serialize(first, JsonOptions),
+            JsonSerializer.Serialize(second, JsonOptions),
+            StringComparison.Ordinal);
+    }
+
     public ProfileLoadResult Import(string path)
     {
         var result = Load(path);

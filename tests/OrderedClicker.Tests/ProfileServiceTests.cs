@@ -12,6 +12,7 @@ internal static class ProfileServiceTests
         SuggestsDistinctPathForImportedCopy();
         CreatesAndListsLocalProfileDirectory();
         ListsOnlyJsonProfilesInNaturalOrder();
+        ComparesProfileSnapshots();
         ExportsAndImportsCompleteProfile();
         RejectsUnsupportedFutureVersion();
         RejectsInvalidPointTiming();
@@ -177,6 +178,22 @@ internal static class ProfileServiceTests
         TestAssert.True(
             profiles.All(profile => System.IO.Path.IsPathFullyQualified(profile.Path)),
             "方案列表应返回规范化完整路径");
+    }
+
+    private static void ComparesProfileSnapshots()
+    {
+        var profile = CreateCompleteProfile();
+        var clone = ProfileService.CloneProfile(profile);
+
+        TestAssert.True(
+            ProfileService.ProfilesEqual(profile, clone),
+            "相同方案快照应判定为未修改");
+
+        clone.Points[0].AfterDelayMs++;
+
+        TestAssert.True(
+            !ProfileService.ProfilesEqual(profile, clone),
+            "单点参数变化应判定为未保存修改");
     }
 
     private static void RoundTripsAllProfileFields()

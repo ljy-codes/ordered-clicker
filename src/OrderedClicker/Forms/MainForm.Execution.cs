@@ -285,7 +285,8 @@ public sealed partial class MainForm
 
     private void SetConfigurationEnabled(bool enabled)
     {
-        _profileNameTextBox.Enabled = enabled;
+        _profileSelector.Enabled = enabled;
+        _openProfilesDirectoryButton.Enabled = enabled;
         _totalLoopsInput.Enabled = enabled;
         _loopDelayInput.Enabled = enabled;
         _defaultClickIntervalInput.Enabled = enabled;

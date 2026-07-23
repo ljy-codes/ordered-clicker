@@ -20,7 +20,9 @@ internal static class UiSmokeTests
         AssertGlobalTimingControls(form);
         AssertCloudDesktopControls(form);
         AssertSaveCommands(form);
+        AssertProfileDirectoryControls(form);
         AssertImportedCopyRequiresSaveAs(form);
+        AssertLocalProfileBindsSourceFile(form);
         AssertGlobalTimingApplication(form);
         AssertDefaultHotKeyText(form);
         AssertUnchangedHotKeysAreDetected();
@@ -63,6 +65,25 @@ internal static class UiSmokeTests
             "主窗体应包含导出方案按钮");
     }
 
+    private static void AssertProfileDirectoryControls(MainForm form)
+    {
+        var controls = EnumerateControls(form).ToList();
+        var selector = controls
+            .OfType<ComboBox>()
+            .SingleOrDefault(control => control.Name == "ProfileSelector");
+        var directoryButton = controls
+            .OfType<Button>()
+            .SingleOrDefault(button => button.Name == "OpenProfilesDirectoryButton");
+
+        TestAssert.True(selector is not null, "主窗体应包含可编辑方案下拉框");
+        TestAssert.Equal(
+            ComboBoxStyle.DropDown,
+            selector!.DropDownStyle,
+            "方案下拉框应允许直接编辑名称");
+        TestAssert.True(directoryButton is not null, "主窗体应包含方案目录按钮");
+        TestAssert.True(directoryButton!.Width >= 36, "方案目录按钮应保持稳定宽度");
+    }
+
     private static void AssertImportedCopyRequiresSaveAs(MainForm form)
     {
         var applyImportedProfile = typeof(MainForm).GetMethod(
@@ -100,6 +121,50 @@ internal static class UiSmokeTests
                 (string)importedSourcePathField!.GetValue(form)!,
                 sourcePath),
             "导入副本应保留规范化来源路径");
+    }
+
+    private static void AssertLocalProfileBindsSourceFile(MainForm form)
+    {
+        var applyLocalProfile = typeof(MainForm).GetMethod(
+            "ApplyLocalProfile",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        var requiresSaveAsField = typeof(MainForm).GetField(
+            "_saveImportedProfileAsCopy",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        var currentPathField = typeof(MainForm).GetField(
+            "_currentProfilePath",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        var hasUnsavedChanges = typeof(MainForm).GetMethod(
+            "HasUnsavedProfileChanges",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+
+        TestAssert.True(applyLocalProfile is not null,
+            "主窗体应集中处理本机方案绑定状态");
+        TestAssert.True(hasUnsavedChanges is not null,
+            "主窗体应能识别未保存方案修改");
+
+        var sourcePath = @"C:\profiles\local.json";
+        applyLocalProfile!.Invoke(
+            form,
+            [new ClickProfile { Version = 2, Name = "本机方案" }, sourcePath]);
+
+        TestAssert.True(
+            ProfileService.PathsEqual(
+                (string)currentPathField!.GetValue(form)!,
+                sourcePath),
+            "本机方案加载后应绑定原文件");
+        TestAssert.True(!(bool)requiresSaveAsField!.GetValue(form)!,
+            "本机方案不应进入导入副本状态");
+        TestAssert.True(!(bool)hasUnsavedChanges!.Invoke(form, null)!,
+            "刚加载的本机方案不应标记为未保存");
+
+        var selector = EnumerateControls(form)
+            .OfType<ComboBox>()
+            .Single(control => control.Name == "ProfileSelector");
+        selector.Text = "本机方案-修改";
+
+        TestAssert.True((bool)hasUnsavedChanges.Invoke(form, null)!,
+            "编辑方案名称后应标记为未保存");
     }
 
     public static void Render(string outputPath)
@@ -354,8 +419,12 @@ internal static class UiSmokeTests
             "SaveButton",
             "SaveAsButton",
             "ImportProfileButton",
-            "ExportProfileButton"
+            "ExportProfileButton",
+            "OpenProfilesDirectoryButton"
         };
+        var profileSelector = EnumerateControls(form)
+            .OfType<ComboBox>()
+            .Single(control => control.Name == "ProfileSelector");
         var method = typeof(MainForm).GetMethod(
             "SetConfigurationEnabled",
             BindingFlags.Instance | BindingFlags.NonPublic);
@@ -368,6 +437,7 @@ internal static class UiSmokeTests
                 !button.Enabled,
                 $"执行期间应禁用 {buttonName}");
         }
+        TestAssert.True(!profileSelector.Enabled, "执行期间应禁用方案下拉框");
 
         method.Invoke(form, [true]);
         foreach (var buttonName in guardedButtonNames)
@@ -377,6 +447,7 @@ internal static class UiSmokeTests
                 button.Enabled,
                 $"执行结束后应恢复 {buttonName}");
         }
+        TestAssert.True(profileSelector.Enabled, "执行结束后应恢复方案下拉框");
     }
 
     private static void AssertGlobalTimingControls(MainForm form)
