@@ -10,6 +10,8 @@ internal static class ProfileServiceTests
         RoundTripsAllProfileFields();
         SavesToExplicitPath();
         SuggestsDistinctPathForImportedCopy();
+        CreatesAndListsLocalProfileDirectory();
+        ListsOnlyJsonProfilesInNaturalOrder();
         ExportsAndImportsCompleteProfile();
         RejectsUnsupportedFutureVersion();
         RejectsInvalidPointTiming();
@@ -125,6 +127,56 @@ internal static class ProfileServiceTests
             System.IO.Path.GetFileNameWithoutExtension(suggestedPath)
                 .Contains("副本", StringComparison.Ordinal),
             "导入副本的建议文件名应明确标识副本");
+    }
+
+    private static void CreatesAndListsLocalProfileDirectory()
+    {
+        using var parent = new TemporaryDirectory();
+        var profilesDirectory = System.IO.Path.Combine(parent.Path, "profiles");
+        var service = new ProfileService(profilesDirectory);
+
+        var profiles = service.ListLocalProfiles();
+
+        TestAssert.True(Directory.Exists(profilesDirectory),
+            "枚举本机方案时应自动创建默认目录");
+        TestAssert.Equal(0, profiles.Count, "新建方案目录应返回空列表");
+    }
+
+    private static void ListsOnlyJsonProfilesInNaturalOrder()
+    {
+        using var directory = new TemporaryDirectory();
+        File.WriteAllText(
+            System.IO.Path.Combine(directory.Path, "方案10.json"),
+            "{}",
+            System.Text.Encoding.UTF8);
+        File.WriteAllText(
+            System.IO.Path.Combine(directory.Path, "说明.txt"),
+            "ignore",
+            System.Text.Encoding.UTF8);
+        File.WriteAllText(
+            System.IO.Path.Combine(directory.Path, "UPPER.JSON"),
+            "{}",
+            System.Text.Encoding.UTF8);
+        File.WriteAllText(
+            System.IO.Path.Combine(directory.Path, "方案2.json"),
+            "{}",
+            System.Text.Encoding.UTF8);
+        Directory.CreateDirectory(System.IO.Path.Combine(directory.Path, "nested"));
+        File.WriteAllText(
+            System.IO.Path.Combine(directory.Path, "nested", "嵌套.json"),
+            "{}",
+            System.Text.Encoding.UTF8);
+        var service = new ProfileService(directory.Path);
+
+        var profiles = service.ListLocalProfiles();
+
+        TestAssert.Equal(3, profiles.Count, "只应列出顶层 JSON 方案");
+        TestAssert.Equal("UPPER", profiles[0].DisplayName, "英文方案应稳定排序");
+        TestAssert.Equal("方案2", profiles[1].DisplayName, "数字文件名应自然排序");
+        TestAssert.Equal("方案10", profiles[2].DisplayName, "方案10 应排在方案2之后");
+        TestAssert.True(
+            profiles.All(profile => System.IO.Path.IsPathFullyQualified(profile.Path)),
+            "方案列表应返回规范化完整路径");
     }
 
     private static void RoundTripsAllProfileFields()

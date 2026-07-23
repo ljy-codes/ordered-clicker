@@ -5,6 +5,11 @@ using OrderedClicker.Models;
 
 namespace OrderedClicker.Services;
 
+public sealed record LocalProfileEntry(string DisplayName, string Path)
+{
+    public override string ToString() => DisplayName;
+}
+
 public sealed class ProfileService
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -22,6 +27,23 @@ public sealed class ProfileService
     }
 
     public string ProfilesDirectory { get; }
+
+    public IReadOnlyList<LocalProfileEntry> ListLocalProfiles()
+    {
+        Directory.CreateDirectory(ProfilesDirectory);
+        return Directory
+            .EnumerateFiles(ProfilesDirectory, "*", SearchOption.TopDirectoryOnly)
+            .Where(path => string.Equals(
+                Path.GetExtension(path),
+                ".json",
+                StringComparison.OrdinalIgnoreCase))
+            .Select(path => new LocalProfileEntry(
+                Path.GetFileNameWithoutExtension(path),
+                Path.GetFullPath(path)))
+            .OrderBy(entry => entry.DisplayName, NaturalFileNameComparer.Instance)
+            .ThenBy(entry => entry.Path, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
 
     public string Save(ClickProfile profile)
     {
@@ -247,5 +269,89 @@ public sealed class ProfileService
         }
 
         return value;
+    }
+
+    private sealed class NaturalFileNameComparer : IComparer<string>
+    {
+        public static NaturalFileNameComparer Instance { get; } = new();
+
+        public int Compare(string? first, string? second)
+        {
+            if (ReferenceEquals(first, second))
+            {
+                return 0;
+            }
+
+            if (first is null)
+            {
+                return -1;
+            }
+
+            if (second is null)
+            {
+                return 1;
+            }
+
+            var firstIndex = 0;
+            var secondIndex = 0;
+            while (firstIndex < first.Length && secondIndex < second.Length)
+            {
+                var firstIsDigit = char.IsDigit(first[firstIndex]);
+                var secondIsDigit = char.IsDigit(second[secondIndex]);
+                if (firstIsDigit && secondIsDigit)
+                {
+                    var firstStart = firstIndex;
+                    var secondStart = secondIndex;
+                    while (firstIndex < first.Length && char.IsDigit(first[firstIndex]))
+                    {
+                        firstIndex++;
+                    }
+
+                    while (secondIndex < second.Length && char.IsDigit(second[secondIndex]))
+                    {
+                        secondIndex++;
+                    }
+
+                    var firstNumber = first.AsSpan(firstStart, firstIndex - firstStart)
+                        .TrimStart('0');
+                    var secondNumber = second.AsSpan(secondStart, secondIndex - secondStart)
+                        .TrimStart('0');
+                    var lengthComparison = firstNumber.Length.CompareTo(secondNumber.Length);
+                    if (lengthComparison != 0)
+                    {
+                        return lengthComparison;
+                    }
+
+                    var numberComparison = firstNumber.CompareTo(
+                        secondNumber,
+                        StringComparison.Ordinal);
+                    if (numberComparison != 0)
+                    {
+                        return numberComparison;
+                    }
+
+                    var digitCountComparison = (firstIndex - firstStart)
+                        .CompareTo(secondIndex - secondStart);
+                    if (digitCountComparison != 0)
+                    {
+                        return digitCountComparison;
+                    }
+
+                    continue;
+                }
+
+                var characterComparison = char.ToUpperInvariant(first[firstIndex])
+                    .CompareTo(char.ToUpperInvariant(second[secondIndex]));
+                if (characterComparison != 0)
+                {
+                    return characterComparison;
+                }
+
+                firstIndex++;
+                secondIndex++;
+            }
+
+            return first.Length.CompareTo(second.Length);
+        }
     }
 }
