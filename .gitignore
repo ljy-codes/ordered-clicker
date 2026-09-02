@@ -6,6 +6,7 @@
 **/bin/
 **/obj/
 publish/
+有序连点器/
 build-diagnostic.log
 docs/superpowers/*
 !docs/superpowers/specs/

@@ -102,7 +102,7 @@ foreach ($directory in @(
 }
 
 if ([string]::IsNullOrWhiteSpace($ProductDirectory)) {
-    $resolvedProductDirectory = Join-Path $publishRoot "product-v$Version"
+    $resolvedProductDirectory = Join-Path $projectRoot "有序连点器"
 }
 else {
     $resolvedProductDirectory = Get-FullPath -Path $ProductDirectory -BasePath $projectRoot

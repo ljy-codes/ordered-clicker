@@ -32,7 +32,7 @@ Windows 10/11 x64 免费开源桌面连点器，无授权码和联网验证。�
 - `有序连点器-使用说明.pdf`
 - `有序连点器-使用说明.html`
 
-最终产品目录只包含安装版 EXE、免安装 EXE、PDF 使用说明和 HTML 使用说明。ZIP 便携包属于内部构建产物，不放入最终交付目录。
+最终产品统一放在项目根目录的 `有序连点器` 文件夹中。最终产品目录只包含安装版 EXE、免安装 EXE、PDF 使用说明和 HTML 使用说明。ZIP 便携包属于内部构建产物，不放入最终交付目录。
 
 ## 热键
 
@@ -106,8 +106,7 @@ OrderedClicker.exe
 .\scripts\publish.ps1
 pwsh -NoProfile -File .\scripts\build-installer.ps1 `
   -Version 1.3.1 `
-  -ProductDirectory "D:\专用工具\连接器产品" `
   -GuideSourceDirectory "D:\专用工具\连点器\操作指导"
 ```
 
-应用发布结果位于 `publish\win-x64`，安装器和 ZIP 便携包中间产物位于 `publish\packages`。最终产品目录只发布安装版 EXE、免安装 EXE、PDF 和 HTML。
+应用发布结果位于 `publish\win-x64`，安装器和 ZIP 便携包中间产物位于 `publish\packages`。最终产品位于 `有序连点器`，只发布安装版 EXE、免安装 EXE、PDF 和 HTML。

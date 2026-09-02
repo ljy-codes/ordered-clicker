@@ -156,6 +156,10 @@ Assert-NotContains `
 Assert-Contains -Content $buildScript -Expected '$PSVersionTable.PSVersion.Major -lt 7' -Name "要求 PowerShell 7"
 Assert-Contains -Content $buildScript -Expected '& (Join-Path $PSScriptRoot "publish.ps1") -Version $Version' -Name "发布版本透传"
 Assert-Contains -Content $buildScript -Expected '"product-staging"' -Name "产品文件先暂存"
+Assert-Contains `
+    -Content $buildScript `
+    -Expected 'Join-Path $projectRoot "有序连点器"' `
+    -Name "默认产品目录位于连点器项目内"
 Assert-Contains -Content $buildScript -Expected '$ownedProductPatterns' -Name "清理旧版本产品文件"
 Assert-Contains `
     -Content $buildScript `
