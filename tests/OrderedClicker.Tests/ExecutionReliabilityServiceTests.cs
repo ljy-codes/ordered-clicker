@@ -39,7 +39,13 @@ internal static class ExecutionReliabilityServiceTests
             plan.PlannedClickCount,
             4,
             0,
-            new ExecutionCheckpoint(1, 0, 1, 1, 4),
+            new ExecutionCheckpoint(
+                1,
+                0,
+                1,
+                ExecutionStage.ClickInterval,
+                1,
+                4),
             "执行已停止",
             TimeSpan.FromSeconds(2));
 

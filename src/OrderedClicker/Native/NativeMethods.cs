@@ -14,6 +14,8 @@ internal static class NativeMethods
     public const uint MouseEventAbsolute = 0x8000;
     public const int DwmwaUseImmersiveDarkMode = 20;
     public const int DwmwaUseImmersiveDarkModeBefore20H1 = 19;
+    public const int StretchModeHalftone = 4;
+    public const uint RasterOperationSourceCopy = 0x00CC0020;
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -33,6 +35,30 @@ internal static class NativeMethods
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool SetCursorPos(int x, int y);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetDC(IntPtr windowHandle);
+
+    [DllImport("user32.dll")]
+    public static extern int ReleaseDC(IntPtr windowHandle, IntPtr deviceContext);
+
+    [DllImport("gdi32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool StretchBlt(
+        IntPtr destination,
+        int destinationX,
+        int destinationY,
+        int destinationWidth,
+        int destinationHeight,
+        IntPtr source,
+        int sourceX,
+        int sourceY,
+        int sourceWidth,
+        int sourceHeight,
+        uint rasterOperation);
+
+    [DllImport("gdi32.dll")]
+    public static extern int SetStretchBltMode(IntPtr deviceContext, int stretchMode);
 
     [DllImport("user32.dll", SetLastError = true)]
     public static extern uint SendInput(uint inputCount, Input[] inputs, int inputSize);

@@ -6,7 +6,7 @@ namespace OrderedClicker.Forms;
 
 public sealed partial class MainForm
 {
-    private readonly ExecutionLogService _executionLogService = new();
+    private readonly ExecutionLogService _executionLogService;
 
     private async Task HandleStartPauseAsync()
     {
@@ -30,8 +30,56 @@ public sealed partial class MainForm
 
     private async Task StartExecutionAsync()
     {
+        if (_executionStartInProgress)
+        {
+            SetStatus("正在准备执行，请勿重复启动。");
+            return;
+        }
+
+        _executionStartInProgress = true;
+        try
+        {
+            await StartExecutionCoreAsync();
+        }
+        finally
+        {
+            _executionStartInProgress = false;
+        }
+    }
+
+    private async Task StartExecutionCoreAsync()
+    {
         ExecutionPlan plan;
         ExecutionCheckpoint checkpoint;
+
+        if (!_settings.SafetyCornerEnabled)
+        {
+            ShowError("开始执行前必须启用安全角停止。请在设置中选择一个安全角。");
+            return;
+        }
+
+        if (_enableGlobalHotKeys
+            && _activeHotKeysKnown
+            && !_activeHotKeyRegistrations.ContainsKey(StopHotKeyId))
+        {
+            ShowError("停止快捷键当前不可用。请关闭占用快捷键的软件并重新设置后再执行。");
+            return;
+        }
+
+        if (_pendingExecutionPlan is not null)
+        {
+            CommitGridChanges();
+            var currentFingerprint = ExecutionPlanFingerprintService.Create(
+                CreateProfileSnapshot());
+            if (!string.Equals(
+                    currentFingerprint,
+                    _pendingExecutionPlan.ProfileFingerprint,
+                    StringComparison.Ordinal))
+            {
+                ClearExecutionCheckpoint();
+                SetStatus("执行配置已变化，旧断点已失效，请重新确认计划。");
+            }
+        }
 
         if (_pendingExecutionPlan is not null)
         {
@@ -63,6 +111,7 @@ public sealed partial class MainForm
             }
             catch (Exception exception)
             {
+                RecordDiagnostic("execution.plan", exception);
                 ShowError($"生成执行计划失败：{exception.Message}");
                 return;
             }
@@ -76,15 +125,31 @@ public sealed partial class MainForm
             checkpoint = ExecutionCheckpoint.Start;
         }
 
+        var safetyCornerPoint = plan.Points.FirstOrDefault(point =>
+            SafetyCornerService.Contains(
+                new Point(point.X, point.Y),
+                plan.VirtualScreen,
+                _settings.SafetyCorner,
+                _settings.SafetyCornerSize));
+        if (safetyCornerPoint is not null)
+        {
+            ShowError(
+                $"原表第 {safetyCornerPoint.SourceIndex + 1} 行点位落在安全角内。"
+                + "请移动该点位，或在设置中更换安全角。");
+            return;
+        }
+
         _captureMode = CaptureMode.Idle;
         UpdateCaptureButton();
         _pauseGate.Resume();
-        _executionCancellation = new CancellationTokenSource();
+        using var executionCancellation = new CancellationTokenSource();
+        _executionCancellation = executionCancellation;
         SetConfigurationEnabled(false);
 
         try
         {
             SetExecutionState(ExecutionState.Countdown);
+            ShowRunStatusForm();
             for (var seconds = 3; seconds >= 1; seconds--)
             {
                 SetStatus(
@@ -93,7 +158,7 @@ public sealed partial class MainForm
                         : $"{seconds} 秒后从断点继续，请切换到目标窗口。");
                 await Task.Delay(
                     TimeSpan.FromSeconds(1),
-                    _executionCancellation.Token);
+                    executionCancellation.Token);
             }
 
             SetExecutionState(ExecutionState.Running);
@@ -104,7 +169,7 @@ public sealed partial class MainForm
                     checkpoint,
                     _pauseGate,
                     progress,
-                    _executionCancellation.Token));
+                    executionCancellation.Token));
 
             try
             {
@@ -112,6 +177,7 @@ public sealed partial class MainForm
             }
             catch (Exception logException)
             {
+                RecordDiagnostic("execution.log", logException);
                 SetStatus($"执行结果已生成，但日志保存失败：{logException.Message}");
             }
 
@@ -124,16 +190,20 @@ public sealed partial class MainForm
         }
         catch (Exception exception)
         {
+            RecordDiagnostic("execution.run", exception);
             PreserveExecutionCheckpoint(plan, checkpoint);
             ShowError($"执行失败：{exception.Message}");
         }
         finally
         {
             _pauseGate.Resume();
-            _executionCancellation?.Dispose();
-            _executionCancellation = null;
+            if (ReferenceEquals(_executionCancellation, executionCancellation))
+            {
+                _executionCancellation = null;
+            }
             SetConfigurationEnabled(true);
             SetExecutionState(ExecutionState.Idle);
+            CloseRunStatusForm();
         }
     }
 
@@ -230,7 +300,9 @@ public sealed partial class MainForm
             + $"原表第 {progress.SourceIndex + 1} 行，"
             + $"点位 {progress.PointIndex}/{progress.PointCount}，"
             + $"点击 {progress.ClickIndex}/{progress.ClickCount}，"
-            + $"总点击 {progress.CompletedClickCount}/{progress.PlannedClickCount}";
+            + $"总点击 {progress.CompletedClickCount}/{progress.PlannedClickCount}，"
+            + $"阶段 {DescribeExecutionStage(progress.Stage)}";
+        _runStatusForm?.UpdateProgress(_progressStatusLabel.Text);
 
         if (progress.RequiresUserContinue)
         {
@@ -239,6 +311,21 @@ public sealed partial class MainForm
                 $"{progress.Message}。确认页面可操作后按 "
                 + $"{StartPauseHotKeyText} 继续，或按 {StopHotKeyText} 停止。");
         }
+    }
+
+    private static string DescribeExecutionStage(ExecutionStage stage)
+    {
+        return stage switch
+        {
+            ExecutionStage.Move => "移动鼠标",
+            ExecutionStage.Click => "点击",
+            ExecutionStage.ClickInterval => "点击间隔",
+            ExecutionStage.AfterPointDelay => "点后等待",
+            ExecutionStage.StabilityCheck => "等待画面稳定",
+            ExecutionStage.LoopDelay => "轮间等待",
+            ExecutionStage.Completed => "完成",
+            _ => stage.ToString()
+        };
     }
 
     private void SetExecutionState(ExecutionState state)
@@ -253,6 +340,10 @@ public sealed partial class MainForm
             ExecutionState.Stopping => "正在停止",
             _ => state.ToString()
         };
+        _workspaceStateLabel.Text = _stateStatusLabel.Text;
+        _runStatusForm?.UpdateState(
+            _stateStatusLabel.Text,
+            state == ExecutionState.Paused);
 
         _startPauseButton.Text = state switch
         {
@@ -270,6 +361,29 @@ public sealed partial class MainForm
         _stopButton.Enabled = state != ExecutionState.Idle;
         _restartButton.Visible =
             state == ExecutionState.Idle && _pendingExecutionPlan is not null;
+    }
+
+    private void ShowRunStatusForm()
+    {
+        _runStatusForm?.Dispose();
+        _runStatusForm = new RunStatusForm(_theme);
+        _runStatusForm.PauseRequested += () => _ = HandleStartPauseAsync();
+        _runStatusForm.StopRequested += StopExecution;
+        _runStatusForm.UpdateState(
+            _stateStatusLabel.Text ?? "准备执行",
+            _executionState == ExecutionState.Paused);
+        _runStatusForm.Show(this);
+    }
+
+    private void CloseRunStatusForm()
+    {
+        if (_runStatusForm is null)
+        {
+            return;
+        }
+
+        _runStatusForm.Dispose();
+        _runStatusForm = null;
     }
 
     private int GetResumeSourceRow()

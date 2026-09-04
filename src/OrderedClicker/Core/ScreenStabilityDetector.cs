@@ -21,21 +21,39 @@ public sealed class ScreenStabilityDetector
         ScreenStabilitySettings settings,
         CancellationToken cancellationToken)
     {
+        return await WaitForStableAsync(
+            region,
+            settings,
+            new AsyncPauseGate(),
+            cancellationToken);
+    }
+
+    public async Task<ScreenStabilityResult> WaitForStableAsync(
+        ScreenBounds region,
+        ScreenStabilitySettings settings,
+        AsyncPauseGate pauseGate,
+        CancellationToken cancellationToken,
+        IProgress<ScreenStabilityProgress>? progress = null)
+    {
         ValidateSettings(settings);
+        var pausableDelay = new PausableDelay(_delay);
+        await pauseGate.WaitIfPausedAsync(cancellationToken);
         var previous = await _sampler.SampleAsync(region, cancellationToken);
         var elapsedMs = 0;
         var stableMs = 0;
 
         while (elapsedMs < settings.TimeoutMs)
         {
-            await _delay(
-                TimeSpan.FromMilliseconds(settings.SampleIntervalMs),
+            await pausableDelay.WaitAsync(
+                settings.SampleIntervalMs,
+                pauseGate,
                 cancellationToken);
             elapsedMs += settings.SampleIntervalMs;
 
+            await pauseGate.WaitIfPausedAsync(cancellationToken);
             var current = await _sampler.SampleAsync(region, cancellationToken);
-            if (CalculateDifference(previous, current)
-                <= settings.DifferenceTolerance)
+            var difference = CalculateDifference(previous, current);
+            if (difference <= settings.DifferenceTolerance)
             {
                 stableMs += settings.SampleIntervalMs;
                 if (stableMs >= settings.StableDurationMs)
@@ -48,6 +66,10 @@ public sealed class ScreenStabilityDetector
                 stableMs = 0;
             }
 
+            progress?.Report(new ScreenStabilityProgress(
+                elapsedMs,
+                stableMs,
+                difference));
             previous = current;
         }
 

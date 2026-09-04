@@ -43,8 +43,28 @@ public sealed class WindowsMouseController : IMouseController
 
     public void LeftClick()
     {
-        SendMouseEvent(NativeMethods.MouseEventLeftDown);
-        SendMouseEvent(NativeMethods.MouseEventLeftUp);
+        var sent = SendMouseEvents(
+            NativeMethods.MouseEventLeftDown,
+            NativeMethods.MouseEventLeftUp);
+        if (sent == 2)
+        {
+            return;
+        }
+
+        if (sent == 1)
+        {
+            if (SendMouseEvent(NativeMethods.MouseEventLeftUp, throwOnFailure: false))
+            {
+                return;
+            }
+
+            throw new IndeterminateClickException(
+                "鼠标按下已发送，但抬起状态无法确认；该点击不会自动重试。");
+        }
+
+        throw new Win32Exception(
+            Marshal.GetLastWin32Error(),
+            "发送鼠标点击失败。");
     }
 
     public void EnsureLeftButtonUp()
@@ -52,14 +72,33 @@ public sealed class WindowsMouseController : IMouseController
         SendMouseEvent(NativeMethods.MouseEventLeftUp, throwOnFailure: false);
     }
 
-    private static void SendMouseEvent(
+    private static bool SendMouseEvent(
         uint flags,
         int dx = 0,
         int dy = 0,
         bool throwOnFailure = true)
     {
-        var inputs = new[]
+        var sent = SendMouseEvents([flags], dx, dy);
+
+        if (sent == 0 && throwOnFailure)
         {
+            throw new Win32Exception(Marshal.GetLastWin32Error(), "发送鼠标事件失败。");
+        }
+
+        return sent > 0;
+    }
+
+    private static uint SendMouseEvents(params uint[] flags)
+    {
+        return SendMouseEvents(flags, 0, 0);
+    }
+
+    private static uint SendMouseEvents(
+        IReadOnlyList<uint> flags,
+        int dx,
+        int dy)
+    {
+        var inputs = flags.Select(flag =>
             new NativeMethods.Input
             {
                 Type = NativeMethods.InputMouse,
@@ -69,20 +108,14 @@ public sealed class WindowsMouseController : IMouseController
                     {
                         Dx = dx,
                         Dy = dy,
-                        Flags = flags
+                        Flags = flag
                     }
                 }
-            }
-        };
+            }).ToArray();
 
-        var sent = NativeMethods.SendInput(
+        return NativeMethods.SendInput(
             (uint)inputs.Length,
             inputs,
             Marshal.SizeOf<NativeMethods.Input>());
-
-        if (sent == 0 && throwOnFailure)
-        {
-            throw new Win32Exception(Marshal.GetLastWin32Error(), "发送鼠标点击失败。");
-        }
     }
 }

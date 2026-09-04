@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using OrderedClicker.Core;
 using OrderedClicker.Models;
 using OrderedClicker.Native;
@@ -23,8 +24,14 @@ public sealed partial class MainForm : Form
     }
 
     private readonly MonitorService _monitorService = new();
-    private readonly ProfileService _profileService = new();
+    private readonly ProfileService _profileService;
     private readonly SettingsService _settingsService;
+    private readonly DraftService? _draftService;
+    private readonly DiagnosticLogService? _diagnosticLogService;
+    private readonly LegacyProfileMigrationService _legacyMigrationService = new();
+    private readonly System.Windows.Forms.Timer _draftTimer = new();
+    private readonly System.Windows.Forms.Timer _safetyCornerTimer = new();
+    private readonly SafetyCornerService _safetyCornerService = new();
     private readonly ClickExecutionEngine _executionEngine = new(
         new WindowsMouseController(),
         stabilityDetector: new ScreenStabilityDetector(new WindowsScreenSampler()));
@@ -41,6 +48,8 @@ public sealed partial class MainForm : Form
     private readonly DataGridView _pointGrid = new();
     private readonly BindingSource _pointBindingSource = new();
     private readonly Button _captureButton = new();
+    private readonly Button _captureNowButton = new();
+    private readonly Button _undoButton = new();
     private readonly Button _moveUpButton = new();
     private readonly Button _moveDownButton = new();
     private readonly Button _deleteButton = new();
@@ -56,6 +65,8 @@ public sealed partial class MainForm : Form
     private readonly Button _startPauseButton = new();
     private readonly Button _stopButton = new();
     private readonly Button _restartButton = new();
+    private readonly Button _openExecutionLogsButton = new();
+    private readonly Button _openDiagnosticsButton = new();
     private readonly CheckBox _cloudDesktopEnabledCheckBox = new();
     private readonly Button _calibrateRegionButton = new();
     private readonly Label _cloudRegionStatusLabel = new();
@@ -66,6 +77,12 @@ public sealed partial class MainForm : Form
     private readonly ToolStripStatusLabel _progressStatusLabel = new();
     private readonly ToolStripStatusLabel _hotKeyStatusLabel = new();
     private readonly StatusStrip _statusStrip = new();
+    private readonly TabControl _workspacePages = new();
+    private readonly Dictionary<WorkspaceStep, Button> _workspaceNavigation = [];
+    private readonly Label _workspaceStateLabel = new();
+    private readonly Label _workspaceStatusLabel = new();
+    private readonly Label _captureEmptyStateLabel = new();
+    private readonly Label _checkSummaryLabel = new();
 
     private BindingList<ClickPoint> _points = [];
     private readonly Dictionary<int, HotKeyRegistration> _activeHotKeyRegistrations = [];
@@ -79,6 +96,7 @@ public sealed partial class MainForm : Form
     private CloudDesktopRegion? _cloudDesktopRegion;
     private int _captureSessionStartCount;
     private string? _currentProfilePath;
+    private string? _currentProfileFileHash;
     private bool _saveImportedProfileAsCopy;
     private string? _importedProfileSourcePath;
     private ClickProfile? _baselineProfile;
@@ -88,14 +106,40 @@ public sealed partial class MainForm : Form
     private ExecutionCheckpoint _executionCheckpoint = ExecutionCheckpoint.Start;
     private bool _suspendHotKeyActions;
     private bool _activeHotKeysKnown;
+    private Guid _profileId = Guid.NewGuid();
+    private DateTime _profileCreatedAtUtc = DateTime.UtcNow;
+    private DateTime _profileUpdatedAtUtc = DateTime.UtcNow;
+    private ClickProfile? _lastDraftSnapshot;
+    private string? _settingsLoadWarning;
+    private CaptureHudForm? _captureHud;
+    private RunStatusForm? _runStatusForm;
+    private readonly Stack<List<ClickPoint>> _pointUndoStack = new();
+    private const int PointUndoHistoryLimit = 10;
+    private bool _executionStartInProgress;
 
     public MainForm(
         bool enableGlobalHotKeys = true,
-        SettingsService? settingsService = null)
+        SettingsService? settingsService = null,
+        AppDataPaths? appDataPaths = null)
     {
         _enableGlobalHotKeys = enableGlobalHotKeys;
-        _settingsService = settingsService ?? new SettingsService();
-        _settings = _settingsService.Load();
+        _profileService = appDataPaths is null
+            ? new ProfileService()
+            : new ProfileService(appDataPaths);
+        _settingsService = settingsService
+                           ?? (appDataPaths is null
+                               ? new SettingsService()
+                               : new SettingsService(appDataPaths));
+        _draftService = appDataPaths is null ? null : new DraftService(appDataPaths);
+        _diagnosticLogService = appDataPaths is null
+            ? null
+            : new DiagnosticLogService(appDataPaths);
+        _executionLogService = appDataPaths is null
+            ? new ExecutionLogService()
+            : new ExecutionLogService(appDataPaths);
+        var settingsResult = _settingsService.LoadWithResult();
+        _settings = settingsResult.Settings;
+        _settingsLoadWarning = settingsResult.Warning;
         _theme = AppThemeCatalog.Get(_settings.Theme);
         InitializeWindow();
         BuildLayout();
@@ -103,15 +147,30 @@ public sealed partial class MainForm : Form
         WireEvents();
         ApplyProfile(new ClickProfile());
         UpdateProfileBaseline();
+        _lastDraftSnapshot = ProfileService.CloneProfile(_baselineProfile!);
         UpdateCaptureButton();
         SetExecutionState(ExecutionState.Idle);
         UpdateHotKeyText();
         ApplyTheme(_theme);
+        ConfigureDraftTimer();
+        ConfigureSafetyCornerTimer();
     }
 
     protected override void OnShown(EventArgs e)
     {
         base.OnShown(e);
+        RecoverDraftIfAvailable();
+        if (!string.IsNullOrWhiteSpace(_settingsLoadWarning))
+        {
+            MessageBox.Show(
+                this,
+                _settingsLoadWarning,
+                "设置已恢复",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+            _settingsLoadWarning = null;
+        }
+
         if (_enableGlobalHotKeys)
         {
             RegisterGlobalHotKeys();
@@ -158,10 +217,17 @@ public sealed partial class MainForm : Form
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
+        FlushDraft();
+        _draftTimer.Stop();
+        _draftTimer.Dispose();
+        _safetyCornerTimer.Stop();
+        _safetyCornerTimer.Dispose();
         _executionCancellation?.Cancel();
         _pauseGate.Resume();
         _hotKeyCoordinator?.Dispose();
         _toolTip.Dispose();
+        _captureHud?.Close();
+        _runStatusForm?.Dispose();
         base.OnFormClosing(e);
     }
 
@@ -169,8 +235,8 @@ public sealed partial class MainForm : Form
     {
         Text = "有序连点器";
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(980, 620);
-        ClientSize = new Size(1080, 700);
+        MinimumSize = new Size(980, 640);
+        ClientSize = new Size(1180, 720);
         AutoScaleMode = AutoScaleMode.Dpi;
         Font = new Font("Segoe UI", 9F);
         BackColor = _theme.Window;
@@ -182,27 +248,308 @@ public sealed partial class MainForm : Form
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 7,
-            Padding = new Padding(12),
+            ColumnCount = 3,
+            RowCount = 2,
+            Padding = new Padding(8),
             BackColor = _theme.Window
         };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 88));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 148));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 218));
 
-        root.Controls.Add(BuildProfilePanel(), 0, 0);
-        root.Controls.Add(BuildTimingPanel(), 0, 1);
-        root.Controls.Add(BuildCloudDesktopPanel(), 0, 2);
-        root.Controls.Add(_pointGrid, 0, 3);
-        root.Controls.Add(BuildPointToolbar(), 0, 4);
-        root.Controls.Add(BuildExecutionPanel(), 0, 5);
-        root.Controls.Add(BuildStatusStrip(), 0, 6);
+        root.Controls.Add(BuildWorkspaceNavigation(), 0, 0);
+        root.Controls.Add(BuildWorkspacePages(), 1, 0);
+        root.Controls.Add(BuildWorkspaceStatusPanel(), 2, 0);
+        root.Controls.Add(BuildStatusStrip(), 0, 1);
+        root.SetColumnSpan(_statusStrip, 3);
         Controls.Add(root);
+        ShowWorkspaceStep(WorkspaceStep.Plan);
+    }
+
+    private Control BuildWorkspaceNavigation()
+    {
+        var panel = new FlowLayoutPanel
+        {
+            Name = "WorkspaceNavigation",
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            Padding = new Padding(0, 8, 8, 0),
+            BackColor = _theme.Window
+        };
+        AddWorkspaceNavigationButton(panel, WorkspaceStep.Mode, "1  模式");
+        AddWorkspaceNavigationButton(panel, WorkspaceStep.Plan, "2  方案");
+        AddWorkspaceNavigationButton(panel, WorkspaceStep.Capture, "3  采点");
+        AddWorkspaceNavigationButton(panel, WorkspaceStep.Check, "4  检查");
+        AddWorkspaceNavigationButton(panel, WorkspaceStep.Run, "5  运行 / 日志");
+        return panel;
+    }
+
+    private void AddWorkspaceNavigationButton(
+        Control panel,
+        WorkspaceStep step,
+        string text)
+    {
+        var button = new Button
+        {
+            Name = step switch
+            {
+                WorkspaceStep.Mode => "WorkspaceModeButton",
+                WorkspaceStep.Plan => "WorkspacePlanButton",
+                WorkspaceStep.Capture => "WorkspaceCaptureButton",
+                WorkspaceStep.Check => "WorkspaceCheckButton",
+                _ => "WorkspaceRunButton"
+            },
+            Text = text,
+            Width = 132,
+            Height = 42,
+            Margin = new Padding(0, 0, 0, 8),
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+        ConfigureCommandButton(button, 132);
+        button.Click += (_, _) => ShowWorkspaceStep(step);
+        _workspaceNavigation[step] = button;
+        panel.Controls.Add(button);
+    }
+
+    private Control BuildWorkspacePages()
+    {
+        _workspacePages.Name = "WorkspacePageHost";
+        _workspacePages.Dock = DockStyle.Fill;
+        _workspacePages.Appearance = TabAppearance.FlatButtons;
+        _workspacePages.ItemSize = new Size(0, 1);
+        _workspacePages.SizeMode = TabSizeMode.Fixed;
+        _workspacePages.Multiline = true;
+        _workspacePages.Padding = new Point(0, 0);
+
+        _workspacePages.TabPages.Add(CreateModePage());
+        _workspacePages.TabPages.Add(CreatePlanPage());
+        _workspacePages.TabPages.Add(CreateCapturePage());
+        _workspacePages.TabPages.Add(CreateCheckPage());
+        _workspacePages.TabPages.Add(CreateRunPage());
+        return _workspacePages;
+    }
+
+    private TabPage CreateModePage()
+    {
+        var page = CreateWorkspacePage("ModePage");
+        var content = BuildCloudDesktopPanel();
+        content.Dock = DockStyle.Top;
+        content.Height = 96;
+        page.Controls.Add(content);
+        return page;
+    }
+
+    private TabPage CreatePlanPage()
+    {
+        var page = CreateWorkspacePage("PlanPage");
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            ColumnCount = 1,
+            RowCount = 2,
+            Padding = new Padding(8)
+        };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 150));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 92));
+        layout.Controls.Add(BuildProfilePanel(), 0, 0);
+        layout.Controls.Add(BuildTimingPanel(), 0, 1);
+        page.Controls.Add(layout);
+        return page;
+    }
+
+    private TabPage CreateCapturePage()
+    {
+        var page = CreateWorkspacePage("CapturePage");
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 3,
+            Padding = new Padding(8)
+        };
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 92));
+        _captureEmptyStateLabel.Name = "CaptureEmptyStateLabel";
+        _captureEmptyStateLabel.Dock = DockStyle.Fill;
+        _captureEmptyStateLabel.Text = "尚未添加点位";
+        _captureEmptyStateLabel.TextAlign = ContentAlignment.MiddleLeft;
+        _captureEmptyStateLabel.Font = new Font(Font, FontStyle.Bold);
+        layout.Controls.Add(_captureEmptyStateLabel, 0, 0);
+        layout.Controls.Add(_pointGrid, 0, 1);
+        layout.Controls.Add(BuildPointToolbar(), 0, 2);
+        page.Controls.Add(layout);
+        return page;
+    }
+
+    private TabPage CreateCheckPage()
+    {
+        var page = CreateWorkspacePage("CheckPage");
+        var layout = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            AutoScroll = true,
+            Padding = new Padding(16)
+        };
+        _checkSummaryLabel.Name = "CheckSummaryLabel";
+        _checkSummaryLabel.AutoSize = false;
+        _checkSummaryLabel.Width = 620;
+        _checkSummaryLabel.Height = 150;
+        _checkSummaryLabel.Font = new Font("Segoe UI", 10F);
+        var checkButton = new Button
+        {
+            Name = "CheckPlanButton",
+            Text = "生成并确认执行计划",
+            Width = 190,
+            Height = 38
+        };
+        ConfigurePrimaryButton(checkButton, 190);
+        checkButton.Click += async (_, _) => await StartExecutionAsync();
+        layout.Controls.Add(_checkSummaryLabel);
+        layout.Controls.Add(checkButton);
+        page.Controls.Add(layout);
+        return page;
+    }
+
+    private TabPage CreateRunPage()
+    {
+        var page = CreateWorkspacePage("RunPage");
+        var layout = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            AutoScroll = true,
+            Padding = new Padding(8)
+        };
+        var panel = BuildExecutionPanel();
+        panel.Width = 700;
+        panel.Height = 110;
+        var supportActions = new FlowLayoutPanel
+        {
+            Width = 700,
+            Height = 48,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false
+        };
+        _openExecutionLogsButton.Name = "OpenExecutionLogsButton";
+        _openExecutionLogsButton.Text = "打开执行日志";
+        ConfigureCommandButton(_openExecutionLogsButton, 118);
+        _openDiagnosticsButton.Name = "OpenDiagnosticsButton";
+        _openDiagnosticsButton.Text = "打开诊断目录";
+        ConfigureCommandButton(_openDiagnosticsButton, 118);
+        supportActions.Controls.Add(_openExecutionLogsButton);
+        supportActions.Controls.Add(_openDiagnosticsButton);
+        layout.Controls.Add(panel);
+        layout.Controls.Add(supportActions);
+        page.Controls.Add(layout);
+        return page;
+    }
+
+    private TabPage CreateWorkspacePage(string name)
+    {
+        return new TabPage
+        {
+            Name = name,
+            Text = name,
+            BackColor = _theme.Window,
+            ForeColor = _theme.Text,
+            AutoScroll = true,
+            Padding = new Padding(0)
+        };
+    }
+
+    private Control BuildWorkspaceStatusPanel()
+    {
+        var panel = new TableLayoutPanel
+        {
+            Name = "WorkspaceStatusPanel",
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 6,
+            Padding = new Padding(12, 14, 4, 8),
+            BackColor = _theme.Window
+        };
+        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 64));
+        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 90));
+        panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
+        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
+        var title = new Label
+        {
+            Text = "工作区状态",
+            Dock = DockStyle.Fill,
+            Font = new Font(Font, FontStyle.Bold)
+        };
+        _workspaceStateLabel.Dock = DockStyle.Fill;
+        _workspaceStateLabel.Text = "就绪";
+        _workspaceStateLabel.Font = new Font("Segoe UI Semibold", 12F);
+        _workspaceStatusLabel.Dock = DockStyle.Fill;
+        _workspaceStatusLabel.Text = "等待操作";
+        _workspaceStatusLabel.AutoEllipsis = true;
+        var safety = new Label
+        {
+            Dock = DockStyle.Fill,
+            Text = "紧急停止\n全局停止键 + 安全角",
+            ForeColor = _theme.WarningAccent
+        };
+        panel.Controls.Add(title, 0, 0);
+        panel.Controls.Add(_workspaceStateLabel, 0, 1);
+        panel.Controls.Add(_workspaceStatusLabel, 0, 2);
+        panel.Controls.Add(safety, 0, 3);
+        _themeSettingsButton.Dock = DockStyle.Fill;
+        _themeSettingsButton.Margin = new Padding(0, 4, 0, 4);
+        _usageHelpButton.Dock = DockStyle.Fill;
+        _usageHelpButton.Margin = new Padding(0, 4, 0, 4);
+        panel.Controls.Add(_themeSettingsButton, 0, 4);
+        panel.Controls.Add(_usageHelpButton, 0, 5);
+        return panel;
+    }
+
+    private void ShowWorkspaceStep(WorkspaceStep step)
+    {
+        _workspacePages.SelectedIndex = (int)step;
+        foreach (var item in _workspaceNavigation)
+        {
+            item.Value.Font = new Font(
+                item.Value.Font,
+                item.Key == step ? FontStyle.Bold : FontStyle.Regular);
+        }
+
+        if (step == WorkspaceStep.Check)
+        {
+            UpdateCheckSummary();
+        }
+    }
+
+    private void UpdateCheckSummary()
+    {
+        var enabled = _points.Count(point => point.Enabled);
+        var clicks = _points
+            .Where(point => point.Enabled)
+            .Sum(point => (long)point.ClickCount * decimal.ToInt32(_totalLoopsInput.Value));
+        _checkSummaryLabel.Text =
+            $"方案：{_profileSelector.Text}\r\n"
+            + $"点位：{_points.Count} 个，启用 {enabled} 个\r\n"
+            + $"循环：{_totalLoopsInput.Value} 次\r\n"
+            + $"计划点击：{clicks} 次\r\n"
+            + $"停止保护：{StopHotKeyText} + "
+            + (_settings.SafetyCornerEnabled ? "安全角已开启" : "安全角未开启");
+    }
+
+    private void UpdateCaptureEmptyState()
+    {
+        _captureEmptyStateLabel.Text = _points.Count == 0
+            ? "尚未添加点位，请使用采点按钮或记录当前位置"
+            : $"已添加 {_points.Count} 个点位";
     }
 
     private Control BuildProfilePanel()
@@ -214,14 +561,14 @@ public sealed partial class MainForm : Form
             RowCount = 2,
             BackColor = _theme.Window
         };
-        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
-        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 92));
+        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
 
         var fields = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false,
+            WrapContents = true,
             Padding = new Padding(0, 5, 0, 5),
             BackColor = _theme.Window
         };
@@ -229,7 +576,7 @@ public sealed partial class MainForm : Form
         {
             Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false,
+            WrapContents = true,
             Padding = new Padding(0, 3, 0, 5),
             BackColor = _theme.Window
         };
@@ -261,13 +608,13 @@ public sealed partial class MainForm : Form
         _saveAsButton.Name = "SaveAsButton";
         _saveAsButton.Text = "另存为";
         _importProfileButton.Name = "ImportProfileButton";
-        _importProfileButton.Text = "导入方案";
+        _importProfileButton.Text = "迁移旧方案";
         _exportProfileButton.Name = "ExportProfileButton";
-        _exportProfileButton.Text = "导出方案";
+        _exportProfileButton.Text = "打开方案";
         ConfigureCommandButton(_saveButton, 68);
         ConfigureCommandButton(_saveAsButton, 78);
-        ConfigureCommandButton(_importProfileButton, 78);
-        ConfigureCommandButton(_exportProfileButton, 78);
+        ConfigureCommandButton(_importProfileButton, 104);
+        ConfigureCommandButton(_exportProfileButton, 88);
 
         fields.Controls.Add(CreateFieldLabel("方案名称"));
         fields.Controls.Add(_profileSelector);
@@ -294,7 +641,7 @@ public sealed partial class MainForm : Form
         {
             Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false,
+            WrapContents = true,
             Padding = new Padding(0, 7, 0, 7),
             BackColor = _theme.Window
         };
@@ -328,11 +675,11 @@ public sealed partial class MainForm : Form
 
         panel.Controls.Add(sectionLabel);
         panel.Controls.Add(CreateSpacer(10));
-        panel.Controls.Add(CreateFieldLabel("点击间隔(ms)"));
+        panel.Controls.Add(CreateFieldLabel("同点连击间隔(ms)"));
         panel.Controls.Add(_defaultClickIntervalInput);
         panel.Controls.Add(_applyClickIntervalButton);
         panel.Controls.Add(CreateSpacer(22));
-        panel.Controls.Add(CreateFieldLabel("点后等待(ms)"));
+        panel.Controls.Add(CreateFieldLabel("步骤完成后等待(ms)"));
         panel.Controls.Add(_defaultAfterDelayInput);
         panel.Controls.Add(_applyAfterDelayButton);
         return panel;
@@ -344,12 +691,16 @@ public sealed partial class MainForm : Form
         {
             Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false,
+            WrapContents = true,
             Padding = new Padding(0, 7, 0, 5),
             BackColor = _theme.Window
         };
 
         ConfigureCommandButton(_captureButton, 190);
+        _captureNowButton.Name = "CaptureNowButton";
+        _captureNowButton.Text = "2 秒后记录";
+        _undoButton.Name = "UndoPointChangeButton";
+        _undoButton.Text = "撤销";
         _moveUpButton.Text = "↑ 上移";
         _moveDownButton.Text = "↓ 下移";
         _deleteButton.Text = "删除";
@@ -362,17 +713,18 @@ public sealed partial class MainForm : Form
         ConfigureCommandButton(_moveDownButton, 86);
         ConfigureCommandButton(_deleteButton, 82);
         ConfigureCommandButton(_clearButton, 82);
+        ConfigureCommandButton(_captureNowButton, 104);
+        ConfigureCommandButton(_undoButton, 82);
         ConfigureCommandButton(_themeSettingsButton, 126);
         ConfigureCommandButton(_usageHelpButton, 150);
 
         panel.Controls.Add(_captureButton);
+        panel.Controls.Add(_captureNowButton);
         panel.Controls.Add(_moveUpButton);
         panel.Controls.Add(_moveDownButton);
         panel.Controls.Add(_deleteButton);
         panel.Controls.Add(_clearButton);
-        panel.Controls.Add(CreateSpacer(28));
-        panel.Controls.Add(_themeSettingsButton);
-        panel.Controls.Add(_usageHelpButton);
+        panel.Controls.Add(_undoButton);
         return panel;
     }
 
@@ -382,7 +734,7 @@ public sealed partial class MainForm : Form
         {
             Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false,
+            WrapContents = true,
             Padding = new Padding(0, 10, 0, 8),
             BackColor = _theme.Window
         };
@@ -517,12 +869,14 @@ public sealed partial class MainForm : Form
             "打开默认方案目录。");
         _toolTip.SetToolTip(
             _importProfileButton,
-            "从 JSON 文件导入方案副本，不会覆盖来源文件。");
+            "读取 v1-v3 旧 JSON 方案并转换为新的 v4 方案，不修改来源文件。");
         _toolTip.SetToolTip(
             _exportProfileButton,
-            "将当前方案导出为 JSON 文件，不改变当前保存位置。");
+            "打开任意位置的 v4 .oclick 方案，并继续保存到原路径。");
         _toolTip.SetToolTip(_calibrateRegionButton, "依次记录云桌面画面的左上角和右下角。");
         _captureButton.Click += (_, _) => ToggleCaptureMode();
+        _captureNowButton.Click += async (_, _) => await RecordCurrentPositionWithDelayAsync();
+        _undoButton.Click += (_, _) => UndoPointChange();
         _moveUpButton.Click += (_, _) => MoveSelectedPoint(-1);
         _moveDownButton.Click += (_, _) => MoveSelectedPoint(1);
         _deleteButton.Click += (_, _) => DeleteSelectedPoint();
@@ -541,13 +895,23 @@ public sealed partial class MainForm : Form
         _profileSelector.SelectionChangeCommitted += (_, _) => SelectLocalProfile();
         _openProfilesDirectoryButton.Click += (_, _) => OpenProfilesDirectory();
         _importProfileButton.Click += (_, _) => ImportProfile();
-        _exportProfileButton.Click += (_, _) => ExportProfile();
+        _exportProfileButton.Click += (_, _) => OpenExternalProfile();
         _themeSettingsButton.Click += (_, _) => ShowThemeSettings();
         _usageHelpButton.Click += (_, _) => ShowUsageHelp();
         _applyClickIntervalButton.Click += (_, _) => ApplyClickIntervalToAll();
         _applyAfterDelayButton.Click += (_, _) => ApplyAfterDelayToAll();
         _startPauseButton.Click += async (_, _) => await HandleStartPauseAsync();
         _stopButton.Click += (_, _) => StopExecution();
+        _openExecutionLogsButton.Click += (_, _) => OpenSupportDirectory(
+            _executionLogService.LogDirectory,
+            "execution.logs.directory");
+        _openDiagnosticsButton.Click += (_, _) => OpenSupportDirectory(
+            _diagnosticLogService?.DiagnosticsDirectory
+            ?? Path.Combine(
+                Directory.GetParent(_executionLogService.LogDirectory)?.FullName
+                ?? _executionLogService.LogDirectory,
+                "diagnostics"),
+            "diagnostics.directory");
         _restartButton.Click += async (_, _) =>
         {
             ClearExecutionCheckpoint();
@@ -580,6 +944,198 @@ public sealed partial class MainForm : Form
                 "全局热键不可用",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
+        }
+    }
+
+    private void ConfigureDraftTimer()
+    {
+        if (_draftService is null)
+        {
+            return;
+        }
+
+        _draftTimer.Interval = 800;
+        _draftTimer.Tick += (_, _) => SaveDraftIfChanged();
+        _draftTimer.Start();
+    }
+
+    private void ConfigureSafetyCornerTimer()
+    {
+        _safetyCornerTimer.Interval = 50;
+        _safetyCornerTimer.Tick += (_, _) =>
+        {
+            if (!_settings.SafetyCornerEnabled
+                || _executionState is ExecutionState.Idle or ExecutionState.Stopping)
+            {
+                _safetyCornerService.Reset();
+                return;
+            }
+
+            var bounds = _monitorService.GetVirtualScreenBounds();
+            if (_safetyCornerService.Update(
+                    Cursor.Position,
+                    bounds,
+                    _settings.SafetyCorner,
+                    _settings.SafetyCornerSize,
+                    TimeSpan.FromMilliseconds(_settings.SafetyCornerDwellMs),
+                    DateTimeOffset.Now))
+            {
+                SetStatus("安全角已触发，正在停止执行。");
+                StopExecution();
+                _safetyCornerService.Reset();
+            }
+        };
+        _safetyCornerTimer.Start();
+    }
+
+    private void SaveDraftIfChanged()
+    {
+        if (_draftService is null
+            || _executionState != ExecutionState.Idle
+            || _pointGrid.IsCurrentCellInEditMode)
+        {
+            return;
+        }
+
+        try
+        {
+            var snapshot = CreateProfileSnapshot();
+            if (_lastDraftSnapshot is not null
+                && ProfileService.ProfilesEqual(_lastDraftSnapshot, snapshot))
+            {
+                return;
+            }
+
+            _draftService.Save(new DraftEnvelope(
+                snapshot,
+                _currentProfilePath,
+                GetSourceUpdatedAtUtc(),
+                DateTime.UtcNow,
+                _currentProfileFileHash));
+            _lastDraftSnapshot = ProfileService.CloneProfile(snapshot);
+        }
+        catch (Exception exception)
+        {
+            RecordDiagnostic("draft.save", exception);
+            SetStatus("自动草稿保存失败，详情已写入诊断日志。");
+        }
+    }
+
+    private void FlushDraft()
+    {
+        if (_draftService is null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (HasUnsavedProfileChanges())
+            {
+                var snapshot = CreateProfileSnapshot();
+                _draftService.Save(new DraftEnvelope(
+                    snapshot,
+                    _currentProfilePath,
+                    GetSourceUpdatedAtUtc(),
+                    DateTime.UtcNow,
+                    _currentProfileFileHash));
+            }
+            else
+            {
+                _draftService.Discard();
+            }
+        }
+        catch (Exception exception)
+        {
+            RecordDiagnostic("draft.flush", exception);
+        }
+    }
+
+    private DateTime? GetSourceUpdatedAtUtc()
+    {
+        return _currentProfilePath is not null && File.Exists(_currentProfilePath)
+            ? File.GetLastWriteTimeUtc(_currentProfilePath)
+            : null;
+    }
+
+    private void RecoverDraftIfAvailable()
+    {
+        if (_draftService?.Exists != true)
+        {
+            return;
+        }
+
+        try
+        {
+            var draft = _draftService.Load();
+            if (draft is null)
+            {
+                return;
+            }
+
+            var sourceChanged = DraftService.HasSourceChanged(draft);
+            var sourceWarning = sourceChanged
+                ? "\n\n原方案已被修改或删除。恢复后将要求另存，避免覆盖较新的文件。"
+                : string.Empty;
+            var choice = MessageBox.Show(
+                this,
+                $"发现 {draft.DraftUpdatedAtUtc.ToLocalTime():yyyy-MM-dd HH:mm:ss} 保存的未完成工作，是否恢复？"
+                + sourceWarning,
+                "恢复自动草稿",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question,
+                MessageBoxDefaultButton.Button1);
+            if (choice != DialogResult.Yes)
+            {
+                _draftService.Discard();
+                return;
+            }
+
+            ApplyProfile(draft.Profile);
+            _currentProfilePath = sourceChanged ? null : draft.SourcePath;
+            _currentProfileFileHash =
+                !sourceChanged && draft.SourcePath is not null
+                    ? draft.SourceSha256
+                    : null;
+            _saveImportedProfileAsCopy = sourceChanged;
+            _importedProfileSourcePath = sourceChanged ? draft.SourcePath : null;
+            _baselineProfile = null;
+            _lastDraftSnapshot = ProfileService.CloneProfile(draft.Profile);
+            ClearExecutionCheckpoint();
+            SetStatus(
+                sourceChanged
+                    ? "已恢复自动草稿；原方案已变化，请另存为新方案。"
+                    : "已恢复自动草稿，请确认后保存。");
+        }
+        catch (Exception exception)
+        {
+            RecordDiagnostic("draft.recover", exception);
+            string? brokenPath = null;
+            try
+            {
+                brokenPath = _draftService?.QuarantineBrokenDraft();
+            }
+            catch (Exception quarantineException)
+            {
+                RecordDiagnostic("draft.quarantine", quarantineException);
+            }
+
+            ShowError(
+                string.IsNullOrWhiteSpace(brokenPath)
+                    ? "自动草稿无法恢复，详情已写入诊断日志。"
+                    : $"自动草稿无法恢复，已隔离到：{brokenPath}");
+        }
+    }
+
+    private void RecordDiagnostic(string operation, Exception exception)
+    {
+        try
+        {
+            _diagnosticLogService?.Write(operation, exception);
+        }
+        catch
+        {
+            // Diagnostics must never replace the original user-facing error.
         }
     }
 
@@ -738,17 +1294,20 @@ public sealed partial class MainForm : Form
         {
             _captureMode = CaptureMode.Idle;
             _cloudRegionTopLeft = null;
+            CloseCaptureHud();
         }
         else if (_captureMode == CaptureMode.PointCapture)
         {
             var added = _points.Count - _captureSessionStartCount;
             _captureMode = CaptureMode.Idle;
+            CloseCaptureHud();
             SetStatus($"采点已结束，本次新增 {added} 个，共 {_points.Count} 个点位。");
         }
         else
         {
             _captureSessionStartCount = _points.Count;
             _captureMode = CaptureMode.PointCapture;
+            ShowCaptureHud($"移动鼠标后按 {CaptureHotKeyText} 或点击“记录当前位置”。");
         }
 
         UpdateCaptureButton();
@@ -780,6 +1339,21 @@ public sealed partial class MainForm : Form
             }
 
             var captured = _monitorService.CaptureCursor();
+            var nearbyIndex = CaptureWorkflowService.FindNearbyPoint(
+                _points,
+                captured.X,
+                captured.Y);
+            if (nearbyIndex >= 0
+                && MessageBox.Show(
+                    this,
+                    $"当前位置接近点位 {nearbyIndex + 1}，仍要添加吗？",
+                    "可能重复的点位",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question) != DialogResult.Yes)
+            {
+                return;
+            }
+
             var point = new ClickPoint
             {
                 X = captured.X,
@@ -808,7 +1382,12 @@ public sealed partial class MainForm : Form
                 point,
                 decimal.ToInt32(_defaultClickIntervalInput.Value),
                 decimal.ToInt32(_defaultAfterDelayInput.Value));
+            PushPointUndo();
             _points.Add(point);
+            UpdateCaptureEmptyState();
+            _captureHud?.UpdateStatus(
+                $"最近记录：({point.X}, {point.Y})",
+                _points.Count);
             SelectPoint(_points.Count - 1);
             SetStatus($"已记录点位 {_points.Count}：({point.X}, {point.Y})。");
         }
@@ -828,6 +1407,7 @@ public sealed partial class MainForm : Form
         }
 
         var point = _points[index];
+        PushPointUndo();
         _points.RemoveAt(index);
         _points.Insert(targetIndex, point);
         _pointGrid.Refresh();
@@ -842,8 +1422,10 @@ public sealed partial class MainForm : Form
             return;
         }
 
+        PushPointUndo();
         _points.RemoveAt(index);
         _pointGrid.Refresh();
+        UpdateCaptureEmptyState();
         if (_points.Count > 0)
         {
             SelectPoint(Math.Min(index, _points.Count - 1));
@@ -863,10 +1445,92 @@ public sealed partial class MainForm : Form
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Question) == DialogResult.Yes)
         {
+            PushPointUndo();
             _points.Clear();
             _pointGrid.Refresh();
+            UpdateCaptureEmptyState();
             SetStatus("已清空全部点位。");
         }
+    }
+
+    private async Task RecordCurrentPositionWithDelayAsync()
+    {
+        if (_executionState != ExecutionState.Idle)
+        {
+            return;
+        }
+
+        if (_captureMode == CaptureMode.Idle)
+        {
+            _captureSessionStartCount = _points.Count;
+            _captureMode = CaptureMode.PointCapture;
+            UpdateCaptureButton();
+            ShowCaptureHud("2 秒后记录，请移动鼠标到目标位置。");
+        }
+
+        SetStatus("2 秒后记录当前位置，请移动鼠标到目标位置。");
+        await Task.Delay(TimeSpan.FromSeconds(2));
+        CaptureCurrentPoint();
+    }
+
+    private void PushPointUndo()
+    {
+        _pointUndoStack.Push(_points.Select(ClonePoint).ToList());
+        if (_pointUndoStack.Count > PointUndoHistoryLimit)
+        {
+            var retained = _pointUndoStack
+                .Take(PointUndoHistoryLimit)
+                .Reverse()
+                .ToArray();
+            _pointUndoStack.Clear();
+            foreach (var snapshot in retained)
+            {
+                _pointUndoStack.Push(snapshot);
+            }
+        }
+
+        _undoButton.Enabled = true;
+    }
+
+    private void UndoPointChange()
+    {
+        if (_pointUndoStack.Count == 0)
+        {
+            return;
+        }
+
+        _points = new BindingList<ClickPoint>(
+            _pointUndoStack.Pop().Select(ClonePoint).ToList());
+        _pointBindingSource.DataSource = _points;
+        _pointGrid.Refresh();
+        _undoButton.Enabled = _pointUndoStack.Count > 0;
+        UpdateCaptureEmptyState();
+        SetStatus("已撤销上一次删除或清空。");
+    }
+
+    private void ShowCaptureHud(string message)
+    {
+        _captureHud ??= new CaptureHudForm(_theme);
+        _captureHud.RecordRequested -= RequestDelayedCapture;
+        _captureHud.RecordRequested += RequestDelayedCapture;
+        _captureHud.FinishRequested -= ToggleCaptureMode;
+        _captureHud.FinishRequested += ToggleCaptureMode;
+        _captureHud.UpdateStatus(message, _points.Count);
+        if (!_captureHud.Visible)
+        {
+            _captureHud.Show(this);
+        }
+    }
+
+    private void RequestDelayedCapture()
+    {
+        _ = RecordCurrentPositionWithDelayAsync();
+    }
+
+    private void CloseCaptureHud()
+    {
+        _captureHud?.Close();
+        _captureHud = null;
     }
 
     private void ApplyClickIntervalToAll()
@@ -906,17 +1570,39 @@ public sealed partial class MainForm : Form
             var profile = CreateProfileSnapshot();
             var path = _currentProfilePath is null
                 ? _profileService.Save(profile)
-                : _profileService.Save(profile, _currentProfilePath);
+                : _profileService.Save(
+                    profile,
+                    _currentProfilePath,
+                    new ProfileSaveOptions(
+                        CreateBackup: true,
+                        AllowOverwrite: true,
+                        ExpectedExistingSha256: _currentProfileFileHash));
             _currentProfilePath = path;
+            _currentProfileFileHash = ProfileService.ComputeFileSha256(path);
+            TrackProfileIdentity(profile);
             _saveImportedProfileAsCopy = false;
             _importedProfileSourcePath = null;
             UpdateProfileBaseline(profile);
+            _lastDraftSnapshot = ProfileService.CloneProfile(profile);
+            _draftService?.Discard();
             RefreshProfileDirectory();
             SetStatus($"配置已保存：{path}");
             return true;
         }
+        catch (ProfileConflictException exception)
+        {
+            RecordDiagnostic("profile.save-conflict", exception);
+            MessageBox.Show(
+                this,
+                exception.Message,
+                "方案保存冲突",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+            return SaveProfileAs();
+        }
         catch (Exception exception)
         {
+            RecordDiagnostic("profile.save", exception);
             ShowError($"保存配置失败：{exception.Message}");
             return false;
         }
@@ -936,7 +1622,7 @@ public sealed partial class MainForm : Form
         using var dialog = new SaveFileDialog
         {
             Title = "另存连点器配置",
-            Filter = "连点器配置 (*.json)|*.json",
+            Filter = "有序连点器方案 (*.oclick)|*.oclick",
             InitialDirectory = importCopyPath is not null
                 ? Path.GetDirectoryName(importCopyPath)
                 : _currentProfilePath is null
@@ -944,9 +1630,9 @@ public sealed partial class MainForm : Form
                     : Path.GetDirectoryName(_currentProfilePath),
             FileName = importCopyPath is not null
                 ? Path.GetFileName(importCopyPath)
-                : $"{profileName}.json",
+                : $"{profileName}.oclick",
             AddExtension = true,
-            DefaultExt = "json",
+            DefaultExt = "oclick",
             OverwritePrompt = true
         };
 
@@ -966,17 +1652,28 @@ public sealed partial class MainForm : Form
         {
             CommitGridChanges();
             var profile = CreateProfileSnapshot();
-            var path = _profileService.Save(profile, dialog.FileName);
+            var path = _profileService.Save(
+                profile,
+                dialog.FileName,
+                new ProfileSaveOptions(
+                    CreateBackup: File.Exists(dialog.FileName),
+                    AllowOverwrite: true,
+                    RenewIdentity: true));
             _currentProfilePath = path;
+            _currentProfileFileHash = ProfileService.ComputeFileSha256(path);
+            TrackProfileIdentity(profile);
             _saveImportedProfileAsCopy = false;
             _importedProfileSourcePath = null;
             UpdateProfileBaseline(profile);
+            _lastDraftSnapshot = ProfileService.CloneProfile(profile);
+            _draftService?.Discard();
             RefreshProfileDirectory();
             SetStatus($"配置已另存为：{path}");
             return true;
         }
         catch (Exception exception)
         {
+            RecordDiagnostic("profile.save-as", exception);
             ShowError($"另存配置失败：{exception.Message}");
             return false;
         }
@@ -987,7 +1684,7 @@ public sealed partial class MainForm : Form
         using var dialog = new OpenFileDialog
         {
             Title = "导入连点器方案副本",
-            Filter = "连点器配置 (*.json)|*.json|所有文件 (*.*)|*.*",
+            Filter = "有序连点器方案 (*.oclick)|*.oclick|所有文件 (*.*)|*.*",
             InitialDirectory = _profileService.ProfilesDirectory,
             CheckFileExists = true
         };
@@ -997,15 +1694,18 @@ public sealed partial class MainForm : Form
             return;
         }
 
-        var result = _profileService.Import(dialog.FileName);
+        var result = _legacyMigrationService.Migrate(dialog.FileName);
         if (!result.Success)
         {
-            ShowError(result.ErrorMessage ?? "方案导入失败。");
+            ShowError(result.Error ?? "旧方案迁移失败。");
             return;
         }
 
         var profile = result.Profile!;
         var enabledPointCount = profile.Points.Count(point => point.Enabled);
+        var warningText = result.Warnings.Count == 0
+            ? "未发现需要人工处理的迁移项。"
+            : string.Join(Environment.NewLine, result.Warnings.Select(item => $"• {item}"));
         var confirmation = MessageBox.Show(
             this,
             $"""
@@ -1014,28 +1714,74 @@ public sealed partial class MainForm : Form
             启用点位：{enabledPointCount}
             总循环次数：{profile.TotalLoops}
 
-            导入后将作为本机副本，不会覆盖来源文件。
-            是否继续导入？
+            {warningText}
+
+            迁移结果将作为未保存的新方案，不会修改来源文件。
+            是否继续？
             """,
-            "确认导入方案",
+            "确认迁移旧方案",
             MessageBoxButtons.YesNo,
             MessageBoxIcon.Question,
             MessageBoxDefaultButton.Button1);
         if (confirmation != DialogResult.Yes)
         {
-            SetStatus("已取消导入方案。");
+            SetStatus("已取消迁移旧方案。");
+            return;
+        }
+
+        if (!ConfirmSaveBeforeProfileSwitch())
+        {
+            SetStatus("已取消迁移旧方案。");
             return;
         }
 
         ApplyImportedProfile(profile, dialog.FileName);
         ClearExecutionCheckpoint();
-        SetStatus($"已导入方案副本：{dialog.FileName}");
+        SetStatus($"旧方案已迁移，请另存为 .oclick：{dialog.FileName}");
+    }
+
+    private void OpenExternalProfile()
+    {
+        using var dialog = new OpenFileDialog
+        {
+            Title = "打开有序连点器方案",
+            Filter = "有序连点器方案 (*.oclick)|*.oclick",
+            InitialDirectory = _currentProfilePath is null
+                ? _profileService.ProfilesDirectory
+                : Path.GetDirectoryName(_currentProfilePath),
+            CheckFileExists = true
+        };
+
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        if (!ConfirmSaveBeforeProfileSwitch())
+        {
+            SetStatus("已取消打开方案。");
+            return;
+        }
+
+        var result = _profileService.Import(dialog.FileName);
+        if (!result.Success)
+        {
+            ShowError(result.ErrorMessage ?? "方案打开失败。");
+            return;
+        }
+
+        ApplyLocalProfile(result.Profile!, dialog.FileName);
+        _lastDraftSnapshot = ProfileService.CloneProfile(result.Profile!);
+        _draftService?.Discard();
+        ClearExecutionCheckpoint();
+        SetStatus($"已打开方案：{dialog.FileName}");
     }
 
     private void ApplyImportedProfile(ClickProfile profile, string sourcePath)
     {
         ApplyProfile(profile);
         _currentProfilePath = null;
+        _currentProfileFileHash = null;
         _saveImportedProfileAsCopy = true;
         _importedProfileSourcePath = Path.GetFullPath(sourcePath);
         UpdateProfileBaseline();
@@ -1046,13 +1792,13 @@ public sealed partial class MainForm : Form
         using var dialog = new SaveFileDialog
         {
             Title = "导出连点器方案",
-            Filter = "连点器配置 (*.json)|*.json",
+            Filter = "有序连点器方案 (*.oclick)|*.oclick",
             InitialDirectory = _currentProfilePath is null
                 ? Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
                 : Path.GetDirectoryName(_currentProfilePath),
-            FileName = $"{_profileSelector.Text.Trim()}.json",
+            FileName = $"{_profileSelector.Text.Trim()}.oclick",
             AddExtension = true,
-            DefaultExt = "json",
+            DefaultExt = "oclick",
             OverwritePrompt = true
         };
 
@@ -1069,6 +1815,7 @@ public sealed partial class MainForm : Form
         }
         catch (Exception exception)
         {
+            RecordDiagnostic("profile.export", exception);
             ShowError($"导出方案失败：{exception.Message}");
         }
     }
@@ -1078,7 +1825,10 @@ public sealed partial class MainForm : Form
         CommitGridChanges();
         return new ClickProfile
         {
-            Version = 3,
+            FormatVersion = 4,
+            ProfileId = _profileId,
+            CreatedAtUtc = _profileCreatedAtUtc,
+            UpdatedAtUtc = _profileUpdatedAtUtc,
             Name = string.IsNullOrWhiteSpace(_profileSelector.Text)
                 ? "默认方案"
                 : _profileSelector.Text.Trim(),
@@ -1102,6 +1852,7 @@ public sealed partial class MainForm : Form
 
     private void ApplyProfile(ClickProfile profile)
     {
+        TrackProfileIdentity(profile);
         _profileSelector.Text = profile.Name;
         _totalLoopsInput.Value = Math.Clamp(profile.TotalLoops, 1, 100000);
         _loopDelayInput.Value = Math.Clamp(profile.LoopDelayMs, 0, 600000);
@@ -1118,6 +1869,20 @@ public sealed partial class MainForm : Form
         _pointBindingSource.DataSource = _points;
         ApplyCloudDesktopProfile(profile);
         _pointGrid.Refresh();
+        UpdateCaptureEmptyState();
+    }
+
+    private void TrackProfileIdentity(ClickProfile profile)
+    {
+        _profileId = profile.ProfileId == Guid.Empty
+            ? Guid.NewGuid()
+            : profile.ProfileId;
+        _profileCreatedAtUtc = profile.CreatedAtUtc == default
+            ? DateTime.UtcNow
+            : profile.CreatedAtUtc;
+        _profileUpdatedAtUtc = profile.UpdatedAtUtc == default
+            ? _profileCreatedAtUtc
+            : profile.UpdatedAtUtc;
     }
 
     private IReadOnlyList<string> GetMonitorWarnings(ClickProfile profile)
@@ -1237,6 +2002,26 @@ public sealed partial class MainForm : Form
     private void SetStatus(string message)
     {
         _progressStatusLabel.Text = message;
+        _workspaceStatusLabel.Text = message;
+        _runStatusForm?.UpdateProgress(message);
+    }
+
+    private void OpenSupportDirectory(string path, string operation)
+    {
+        try
+        {
+            Directory.CreateDirectory(path);
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = path,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception exception)
+        {
+            RecordDiagnostic(operation, exception);
+            ShowError($"打开目录失败：{exception.Message}");
+        }
     }
 
     private void ShowError(string message)

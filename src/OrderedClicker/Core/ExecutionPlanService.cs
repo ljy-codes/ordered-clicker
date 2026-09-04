@@ -24,6 +24,7 @@ public static class ExecutionPlanService
         var clicksPerLoop = points.Aggregate(
             0L,
             (total, point) => checked(total + point.ClickCount));
+        var duration = ExecutionDurationEstimator.Estimate(profile);
 
         return new ExecutionPlan
         {
@@ -49,7 +50,10 @@ public static class ExecutionPlanService
             },
             StabilityRegion = profile.CoordinateMode == CoordinateMode.CloudDesktopRegion
                 ? profile.CloudDesktopRegion!.Bounds
-                : virtualScreen
+                : virtualScreen,
+            ProfileFingerprint = ExecutionPlanFingerprintService.Create(profile),
+            EstimatedBaseDuration = duration.Base,
+            EstimatedMaximumDuration = duration.Maximum
         };
     }
 

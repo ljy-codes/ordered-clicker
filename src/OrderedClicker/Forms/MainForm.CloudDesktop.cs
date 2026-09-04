@@ -11,7 +11,7 @@ public sealed partial class MainForm
         {
             Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false,
+            WrapContents = true,
             Padding = new Padding(0, 7, 0, 7),
             BackColor = _theme.Window
         };
@@ -77,6 +77,8 @@ public sealed partial class MainForm
         _captureMode = CaptureMode.CloudRegionTopLeft;
         _cloudRegionTopLeft = null;
         UpdateCaptureButton();
+        ShowCaptureHud(
+            $"将鼠标移到云桌面左上角，按 {CaptureHotKeyText} 或点“记录当前位置”。");
         SetStatus(
             $"将鼠标移到云桌面画面的左上角，按 {CaptureHotKeyText}；"
             + "然后再记录右下角。");
@@ -90,6 +92,9 @@ public sealed partial class MainForm
             _cloudRegionTopLeft = new Point(captured.X, captured.Y);
             _captureMode = CaptureMode.CloudRegionBottomRight;
             UpdateCaptureButton();
+            _captureHud?.UpdateStatus(
+                "左上角已记录，请记录右下角。",
+                _points.Count);
             SetStatus(
                 $"左上角已记录 ({captured.X}, {captured.Y})，"
                 + $"请移动到右下角并按 {CaptureHotKeyText}。");
@@ -129,29 +134,33 @@ public sealed partial class MainForm
         }
 
         _cloudDesktopRegion = region;
-        ConvertExistingPointsToRelative(region);
+        var filledPointCount =
+            CloudDesktopCoordinateService.FillMissingRelativeCoordinates(_points, region);
         _captureMode = CaptureMode.Idle;
         _cloudRegionTopLeft = null;
+        CloseCaptureHud();
         UpdateCloudDesktopControls();
         UpdateCaptureButton();
         ClearExecutionCheckpoint();
         SetStatus(
             $"云桌面区域已校准：{region.Width} × {region.Height}，"
-            + "已有区域内点位已转换为相对坐标。");
+            + $"补充了 {filledPointCount} 个缺失相对坐标，已有相对坐标保持不变。");
+        ShowCloudRegionPreview(region);
     }
 
-    private void ConvertExistingPointsToRelative(CloudDesktopRegion region)
+    private void ShowCloudRegionPreview(CloudDesktopRegion region)
     {
-        foreach (var point in _points.Where(
-                     point => region.Bounds.Contains(point.X, point.Y)))
+        var overlay = new CloudRegionOverlayForm(region, _theme);
+        var timer = new System.Windows.Forms.Timer { Interval = 1200 };
+        timer.Tick += (_, _) =>
         {
-            var relative = CloudDesktopCoordinateService.ToRelative(
-                region,
-                point.X,
-                point.Y);
-            point.RelativeX = relative.X;
-            point.RelativeY = relative.Y;
-        }
+            timer.Stop();
+            timer.Dispose();
+            overlay.Close();
+            overlay.Dispose();
+        };
+        overlay.Show(this);
+        timer.Start();
     }
 
     private void UpdateCloudDesktopControls()

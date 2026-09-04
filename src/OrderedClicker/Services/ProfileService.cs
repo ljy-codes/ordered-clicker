@@ -1,5 +1,7 @@
 using System.Text;
 using System.Text.Json;
+using System.Security.Cryptography;
+using System.Collections.Concurrent;
 using OrderedClicker.Core;
 using OrderedClicker.Models;
 
@@ -12,6 +14,9 @@ public sealed record LocalProfileEntry(string DisplayName, string Path)
 
 public sealed class ProfileService
 {
+    private static readonly ConcurrentDictionary<string, object> SaveLocks =
+        new(StringComparer.OrdinalIgnoreCase);
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -26,6 +31,11 @@ public sealed class ProfileService
             "profiles");
     }
 
+    public ProfileService(AppDataPaths paths)
+        : this(paths?.Profiles)
+    {
+    }
+
     public string ProfilesDirectory { get; }
 
     public IReadOnlyList<LocalProfileEntry> ListLocalProfiles()
@@ -35,7 +45,7 @@ public sealed class ProfileService
             .EnumerateFiles(ProfilesDirectory, "*", SearchOption.TopDirectoryOnly)
             .Where(path => string.Equals(
                 Path.GetExtension(path),
-                ".json",
+                ".oclick",
                 StringComparison.OrdinalIgnoreCase))
             .Select(path => new LocalProfileEntry(
                 Path.GetFileNameWithoutExtension(path),
@@ -48,14 +58,22 @@ public sealed class ProfileService
     public string Save(ClickProfile profile)
     {
         Directory.CreateDirectory(ProfilesDirectory);
-        var fileName = SanitizeFileName(profile.Name);
-        var destination = Path.Combine(ProfilesDirectory, $"{fileName}.json");
+        var destination = GetAvailableProfilePath(profile.Name, profile.ProfileId);
         return Save(profile, destination);
     }
 
     public string Save(ClickProfile profile, string destination)
     {
+        return Save(profile, destination, new ProfileSaveOptions());
+    }
+
+    public string Save(
+        ClickProfile profile,
+        string destination,
+        ProfileSaveOptions options)
+    {
         ArgumentNullException.ThrowIfNull(profile);
+        ArgumentNullException.ThrowIfNull(options);
         if (string.IsNullOrWhiteSpace(destination))
         {
             throw new ArgumentException("保存路径不能为空。", nameof(destination));
@@ -68,13 +86,32 @@ public sealed class ProfileService
         }
 
         Directory.CreateDirectory(directory);
-        var temporary = destination + ".tmp";
+        if (File.Exists(destination) && !options.AllowOverwrite)
+        {
+            throw new IOException("目标方案已存在，必须明确确认后才能覆盖。");
+        }
+
+        var validationError = ValidateProfile(profile);
+        if (validationError is not null)
+        {
+            throw new InvalidDataException(validationError);
+        }
+
+        if (options.RenewIdentity)
+        {
+            profile.ProfileId = Guid.NewGuid();
+            profile.CreatedAtUtc = DateTime.UtcNow;
+        }
+
+        profile.FormatVersion = 4;
+        profile.UpdatedAtUtc = DateTime.UtcNow;
+        var temporary = $"{destination}.{Guid.NewGuid():N}.tmp";
         var json = JsonSerializer.Serialize(profile, JsonOptions);
 
         try
         {
             File.WriteAllText(temporary, json, new UTF8Encoding(false));
-            File.Move(temporary, destination, true);
+            CommitTemporaryFile(temporary, destination, options);
             return destination;
         }
         finally
@@ -88,7 +125,27 @@ public sealed class ProfileService
 
     public string Export(ClickProfile profile, string destination)
     {
-        return Save(profile, destination);
+        return Save(
+            profile,
+            destination,
+            new ProfileSaveOptions(
+                CreateBackup: File.Exists(destination),
+                AllowOverwrite: true));
+    }
+
+    public string GetAvailableProfilePath(string profileName, Guid profileId)
+    {
+        Directory.CreateDirectory(ProfilesDirectory);
+        var baseName = SanitizeFileName(profileName);
+        var candidate = Path.Combine(ProfilesDirectory, $"{baseName}.oclick");
+        var suffix = 2;
+        while (File.Exists(candidate))
+        {
+            candidate = Path.Combine(ProfilesDirectory, $"{baseName}-{suffix}.oclick");
+            suffix++;
+        }
+
+        return candidate;
     }
 
     public string GetAvailableImportCopyPath(string profileName, string sourcePath)
@@ -99,11 +156,11 @@ public sealed class ProfileService
         }
 
         var baseName = $"{SanitizeFileName(profileName)}-副本";
-        var candidate = Path.Combine(ProfilesDirectory, $"{baseName}.json");
+        var candidate = Path.Combine(ProfilesDirectory, $"{baseName}.oclick");
         var suffix = 2;
         while (PathsEqual(candidate, sourcePath) || File.Exists(candidate))
         {
-            candidate = Path.Combine(ProfilesDirectory, $"{baseName}-{suffix}.json");
+            candidate = Path.Combine(ProfilesDirectory, $"{baseName}-{suffix}.oclick");
             suffix++;
         }
 
@@ -143,6 +200,12 @@ public sealed class ProfileService
             StringComparison.Ordinal);
     }
 
+    public static string ComputeFileSha256(string path)
+    {
+        using var stream = File.OpenRead(path);
+        return Convert.ToHexString(SHA256.HashData(stream));
+    }
+
     public ProfileLoadResult Import(string path)
     {
         var result = Load(path);
@@ -152,7 +215,7 @@ public sealed class ProfileService
         }
 
         var profile = result.Profile!;
-        var validationError = ValidateImportedProfile(profile);
+        var validationError = ValidateProfile(profile);
         return validationError is null
             ? ProfileLoadResult.Loaded(profile)
             : ProfileLoadResult.Failed(validationError);
@@ -183,11 +246,11 @@ public sealed class ProfileService
         }
     }
 
-    private static string? ValidateImportedProfile(ClickProfile profile)
+    public static string? ValidateProfile(ClickProfile profile)
     {
-        if (profile.Version is < 1 or > 3)
+        if (profile.FormatVersion != 4)
         {
-            return $"不支持方案文件版本 {profile.Version}，当前支持版本 1 至 3。";
+            return $"不支持方案文件版本 {profile.FormatVersion}，请使用“迁移旧方案”转换为版本 4。";
         }
 
         if (profile.TotalLoops is < 1 or > 100000)
@@ -276,6 +339,197 @@ public sealed class ProfileService
         }
 
         return null;
+    }
+
+    private static void EnsureExpectedFileVersion(
+        string destination,
+        string? expectedExistingSha256)
+    {
+        if (string.IsNullOrWhiteSpace(expectedExistingSha256))
+        {
+            return;
+        }
+
+        try
+        {
+            if (!File.Exists(destination)
+                || !string.Equals(
+                    ComputeFileSha256(destination),
+                    expectedExistingSha256,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ProfileConflictException(
+                    "方案文件已被其他程序或窗口修改，请另存为新文件。");
+            }
+        }
+        catch (ProfileConflictException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException)
+        {
+            throw new ProfileConflictException(
+                "方案文件正在被其他程序写入，请稍后重试或另存为新文件。",
+                exception);
+        }
+    }
+
+    private static void CommitTemporaryFile(
+        string temporary,
+        string destination,
+        ProfileSaveOptions options)
+    {
+        var normalizedDestination = Path.GetFullPath(destination);
+        var saveLock = SaveLocks.GetOrAdd(normalizedDestination, static _ => new object());
+        lock (saveLock)
+        {
+            if (string.IsNullOrWhiteSpace(options.ExpectedExistingSha256))
+            {
+                if (File.Exists(destination) && options.CreateBackup)
+                {
+                    File.Copy(destination, destination + ".bak", true);
+                }
+
+                File.Move(temporary, destination, options.AllowOverwrite);
+                return;
+            }
+
+            CommitExpectedFileVersion(
+                temporary,
+                destination,
+                options.ExpectedExistingSha256,
+                options.CreateBackup);
+        }
+    }
+
+    private static void CommitExpectedFileVersion(
+        string temporary,
+        string destination,
+        string expectedExistingSha256,
+        bool createBackup)
+    {
+        EnsureExpectedFileVersion(destination, expectedExistingSha256);
+        var capturedPath =
+            $"{destination}.save-{Guid.NewGuid():N}.previous";
+        try
+        {
+            try
+            {
+                File.Move(destination, capturedPath, false);
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException)
+            {
+                throw new ProfileConflictException(
+                    "方案文件正在被其他程序写入，请稍后重试或另存为新文件。",
+                    exception);
+            }
+
+            try
+            {
+                using (var capturedLease = OpenCapturedVersion(capturedPath))
+                {
+                    var capturedHash = Convert.ToHexString(
+                        SHA256.HashData(capturedLease));
+                    if (!string.Equals(
+                            capturedHash,
+                            expectedExistingSha256,
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        throw new ProfileConflictException(
+                            "方案文件已被其他程序或窗口修改，请另存为新文件。");
+                    }
+
+                    if (createBackup)
+                    {
+                        File.Copy(capturedPath, destination + ".bak", true);
+                    }
+
+                    if (File.Exists(destination))
+                    {
+                        throw new ProfileConflictException(
+                            "方案保存期间目标路径被其他程序占用，请另存为新文件。");
+                    }
+
+                    File.Move(temporary, destination, false);
+                }
+
+                TryDeleteFile(capturedPath);
+            }
+            catch
+            {
+                RestoreCapturedVersion(capturedPath, destination);
+                throw;
+            }
+        }
+        catch (ProfileConflictException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException)
+        {
+            RestoreCapturedVersion(capturedPath, destination);
+            throw new ProfileConflictException(
+                "方案保存期间文件状态发生变化，请另存为新文件。",
+                exception);
+        }
+    }
+
+    private static FileStream OpenCapturedVersion(string capturedPath)
+    {
+        try
+        {
+            return new FileStream(
+                capturedPath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read);
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException)
+        {
+            throw new ProfileConflictException(
+                "方案文件仍被其他程序写入，请稍后重试或另存为新文件。",
+                exception);
+        }
+    }
+
+    private static void RestoreCapturedVersion(
+        string capturedPath,
+        string destination)
+    {
+        if (!File.Exists(capturedPath) || File.Exists(destination))
+        {
+            return;
+        }
+
+        try
+        {
+            File.Move(capturedPath, destination, false);
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException)
+        {
+            // Keep the captured file beside the destination for manual recovery.
+        }
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException)
+        {
+            // The committed destination is valid; a stale recovery copy is harmless.
+        }
     }
 
     private static string SanitizeFileName(string name)

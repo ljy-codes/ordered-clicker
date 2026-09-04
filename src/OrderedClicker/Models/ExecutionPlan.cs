@@ -21,4 +21,10 @@ public sealed class ExecutionPlan
     public required ScreenStabilitySettings ScreenStability { get; init; }
 
     public required ScreenBounds StabilityRegion { get; init; }
+
+    public string ProfileFingerprint { get; init; } = string.Empty;
+
+    public TimeSpan EstimatedBaseDuration { get; init; }
+
+    public TimeSpan EstimatedMaximumDuration { get; init; }
 }

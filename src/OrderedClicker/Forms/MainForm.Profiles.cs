@@ -39,6 +39,7 @@ public sealed partial class MainForm
         }
         catch (Exception exception)
         {
+            RecordDiagnostic("profile.list", exception);
             ShowError($"读取方案目录失败：{exception.Message}");
         }
         finally
@@ -127,9 +128,14 @@ public sealed partial class MainForm
     {
         ApplyProfile(profile);
         _currentProfilePath = Path.GetFullPath(sourcePath);
+        _currentProfileFileHash = File.Exists(sourcePath)
+            ? ProfileService.ComputeFileSha256(sourcePath)
+            : null;
         _saveImportedProfileAsCopy = false;
         _importedProfileSourcePath = null;
         UpdateProfileBaseline();
+        _lastDraftSnapshot = ProfileService.CloneProfile(profile);
+        _draftService?.Discard();
     }
 
     private void UpdateProfileBaseline(ClickProfile? profile = null)
@@ -159,6 +165,7 @@ public sealed partial class MainForm
         }
         catch (Exception exception)
         {
+            RecordDiagnostic("profile.directory.open", exception);
             ShowError($"打开方案目录失败：{exception.Message}");
         }
     }

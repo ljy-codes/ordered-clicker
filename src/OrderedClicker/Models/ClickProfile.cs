@@ -1,8 +1,23 @@
+using System.Text.Json.Serialization;
+
 namespace OrderedClicker.Models;
 
 public sealed class ClickProfile
 {
-    public int Version { get; set; } = 3;
+    public int FormatVersion { get; set; } = 4;
+
+    public Guid ProfileId { get; set; } = Guid.NewGuid();
+
+    public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+
+    public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
+
+    [JsonIgnore]
+    public int Version
+    {
+        get => FormatVersion;
+        set => FormatVersion = value;
+    }
 
     public string Name { get; set; } = "默认方案";
 

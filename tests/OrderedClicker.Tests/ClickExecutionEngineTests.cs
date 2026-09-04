@@ -14,6 +14,131 @@ internal static class ClickExecutionEngineTests
         await CancelsDuringDelay();
         await ExecutesFiveHundredPointsAcrossThreeLoops();
         await ResumesFromTheNextUnfinishedClick();
+        await ResumesIncompleteAfterPointDelay();
+        await PauseFreezesDelayConsumption();
+        await DoesNotRepeatIndeterminateClick();
+    }
+
+    private static async Task ResumesIncompleteAfterPointDelay()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var delayStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var mouse = new RecordingMouseController();
+        var engine = new ClickExecutionEngine(mouse, async (_, token) =>
+        {
+            delayStarted.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, token);
+        });
+        var profile = new ClickProfile
+        {
+            TotalLoops = 1,
+            Points = [CreatePoint(10, 20, 1)]
+        };
+        profile.Points[0].AfterDelayMs = 100;
+        var plan = ExecutionPlanService.Create(
+            profile,
+            new ScreenBounds(0, 0, 1920, 1080));
+
+        var execution = engine.ExecuteAsync(
+            plan,
+            ExecutionCheckpoint.Start,
+            new AsyncPauseGate(),
+            null,
+            cancellation.Token);
+        await delayStarted.Task;
+        cancellation.Cancel();
+        var stopped = await execution;
+
+        TestAssert.Equal(ExecutionStage.AfterPointDelay, stopped.NextCheckpoint.Stage,
+            "点后等待未完成时断点必须停留在该阶段");
+
+        var resumedDelays = 0;
+        var resumedMouse = new RecordingMouseController();
+        var resumed = await new ClickExecutionEngine(
+            resumedMouse,
+            (_, _) =>
+            {
+                resumedDelays++;
+                return Task.CompletedTask;
+            }).ExecuteAsync(
+                plan,
+                stopped.NextCheckpoint,
+                new AsyncPauseGate(),
+                null,
+                CancellationToken.None);
+
+        TestAssert.Equal(ExecutionOutcome.Completed, resumed.Outcome,
+            "补完点后等待后应完成");
+        TestAssert.Equal(0, resumedMouse.Events.Count(item => item == "C"),
+            "恢复未完成等待时不得重复已经完成的点击");
+        TestAssert.True(resumedDelays > 0, "恢复时必须重新执行未完成的点后等待");
+    }
+
+    private static async Task PauseFreezesDelayConsumption()
+    {
+        var pauseGate = new AsyncPauseGate();
+        var firstSlice = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSlice = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var slices = 0;
+        var delay = new PausableDelay(async (_, token) =>
+        {
+            slices++;
+            firstSlice.TrySetResult();
+            await releaseSlice.Task.WaitAsync(token);
+        }, sliceMilliseconds: 25);
+
+        var wait = delay.WaitAsync(50, pauseGate, CancellationToken.None);
+        await firstSlice.Task;
+        pauseGate.Pause();
+        releaseSlice.TrySetResult();
+        await Task.Delay(30);
+
+        TestAssert.True(!wait.IsCompleted, "暂停期间不应消耗剩余等待时间");
+
+        pauseGate.Resume();
+        await wait;
+        TestAssert.Equal(2, slices, "恢复后应继续完成剩余延时分片");
+    }
+
+    private static async Task DoesNotRepeatIndeterminateClick()
+    {
+        var profile = new ClickProfile
+        {
+            Points = [CreatePoint(10, 20, 2)]
+        };
+        var plan = ExecutionPlanService.Create(
+            profile,
+            new ScreenBounds(0, 0, 1920, 1080));
+        var failed = await new ClickExecutionEngine(
+            new IndeterminateMouseController(),
+            (_, _) => Task.CompletedTask).ExecuteAsync(
+                plan,
+                ExecutionCheckpoint.Start,
+                new AsyncPauseGate(),
+                null,
+                CancellationToken.None);
+
+        TestAssert.Equal(ExecutionOutcome.Failed, failed.Outcome,
+            "点击结果不确定时应停止并要求用户检查");
+        TestAssert.Equal(1L, failed.CompletedClickCount,
+            "结果不确定的点击应标记为已消费，避免自动重复");
+        TestAssert.Equal(ExecutionStage.ClickInterval, failed.NextCheckpoint.Stage,
+            "断点应从结果不确定点击之后继续");
+
+        var resumedMouse = new RecordingMouseController();
+        var resumed = await new ClickExecutionEngine(
+            resumedMouse,
+            (_, _) => Task.CompletedTask).ExecuteAsync(
+                plan,
+                failed.NextCheckpoint,
+                new AsyncPauseGate(),
+                null,
+                CancellationToken.None);
+
+        TestAssert.Equal(ExecutionOutcome.Completed, resumed.Outcome,
+            "用户确认后应能从下一次点击继续");
+        TestAssert.Equal(1, resumedMouse.Events.Count(item => item == "C"),
+            "续跑不得重复结果不确定的点击");
     }
 
     private static async Task ExecutesPointsInOrderForEveryLoop()
@@ -237,6 +362,22 @@ internal static class ClickExecutionEngineTests
             {
                 _afterClick?.Invoke();
             }
+        }
+
+        public void EnsureLeftButtonUp()
+        {
+        }
+    }
+
+    private sealed class IndeterminateMouseController : IMouseController
+    {
+        public void MoveTo(int x, int y)
+        {
+        }
+
+        public void LeftClick()
+        {
+            throw new IndeterminateClickException("点击结果不确定");
         }
 
         public void EnsureLeftButtonUp()

@@ -11,6 +11,52 @@ internal static class ScreenStabilityDetectorTests
         await ReturnsStableAfterContinuousMatchingFrames();
         await TimesOutWhileFramesKeepChanging();
         await HonorsCancellation();
+        await PausePreventsSampling();
+        await DetectsRgbChannelChanges();
+    }
+
+    private static async Task PausePreventsSampling()
+    {
+        var sampler = new SequenceScreenSampler([0, 0, 0], [0, 0, 0]);
+        var pauseGate = new AsyncPauseGate();
+        pauseGate.Pause();
+        var detector = new ScreenStabilityDetector(
+            sampler,
+            (_, _) => Task.CompletedTask);
+
+        var wait = detector.WaitForStableAsync(
+            new ScreenBounds(0, 0, 100, 100),
+            CreateSettings(1, 5),
+            pauseGate,
+            CancellationToken.None);
+        await Task.Delay(30);
+
+        TestAssert.Equal(0, sampler.SampleCount, "暂停期间不应采集画面");
+
+        pauseGate.Resume();
+        await wait;
+        TestAssert.True(sampler.SampleCount >= 2, "恢复后应继续采样");
+    }
+
+    private static async Task DetectsRgbChannelChanges()
+    {
+        var sampler = new SequenceScreenSampler(
+            [255, 0, 0],
+            [0, 0, 255],
+            [0, 0, 255]);
+        var detector = new ScreenStabilityDetector(
+            sampler,
+            (_, _) => Task.CompletedTask);
+
+        var result = await detector.WaitForStableAsync(
+            new ScreenBounds(0, 0, 100, 100),
+            CreateSettings(1, 5),
+            CancellationToken.None);
+
+        TestAssert.Equal(ScreenStabilityResult.Stable, result,
+            "亮度接近但 RGB 通道变化时不能误判首个差异帧为稳定");
+        TestAssert.Equal(3, sampler.SampleCount,
+            "RGB 差异应重置连续稳定计时");
     }
 
     private static async Task ReturnsStableAfterContinuousMatchingFrames()
@@ -88,6 +134,8 @@ internal static class ScreenStabilityDetectorTests
     private sealed class SequenceScreenSampler(params byte[][] frames) : IScreenSampler
     {
         private int _index;
+
+        public int SampleCount => _index;
 
         public Task<byte[]> SampleAsync(
             ScreenBounds region,

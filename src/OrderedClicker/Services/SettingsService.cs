@@ -24,13 +24,25 @@ public sealed class SettingsService
             "settings.json");
     }
 
+    public SettingsService(AppDataPaths paths)
+        : this(Path.Combine(
+            paths?.Root ?? throw new ArgumentNullException(nameof(paths)),
+            "settings.json"))
+    {
+    }
+
     public string SettingsPath { get; }
 
     public AppSettings Load()
     {
+        return LoadWithResult().Settings;
+    }
+
+    public SettingsLoadResult LoadWithResult()
+    {
         if (!File.Exists(SettingsPath))
         {
-            return new AppSettings();
+            return new SettingsLoadResult(new AppSettings(), null, null);
         }
 
         try
@@ -39,7 +51,7 @@ public sealed class SettingsService
             var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions);
             if (settings is null || !Enum.IsDefined(settings.Theme))
             {
-                return new AppSettings();
+                throw new JsonException("设置内容为空或主题无效。");
             }
 
             if (settings.Version < 2)
@@ -58,6 +70,27 @@ public sealed class SettingsService
                 settings.RequiresSaveAfterLoad = true;
             }
 
+            if (settings.Version < 3)
+            {
+                settings.Version = 3;
+                settings.SafetyCornerEnabled = true;
+                settings.SafetyCorner = SafetyCorner.TopLeft;
+                settings.SafetyCornerSize = 8;
+                settings.SafetyCornerDwellMs = 350;
+                settings.RequiresSaveAfterLoad = true;
+            }
+
+            if (!Enum.IsDefined(settings.SafetyCorner)
+                || settings.SafetyCornerSize is < 4 or > 64
+                || settings.SafetyCornerDwellMs is < 100 or > 3000)
+            {
+                settings.SafetyCornerEnabled = true;
+                settings.SafetyCorner = SafetyCorner.TopLeft;
+                settings.SafetyCornerSize = 8;
+                settings.SafetyCornerDwellMs = 350;
+                settings.RequiresSaveAfterLoad = true;
+            }
+
             if (!HotKeyBindingService.ValidateSet(
                     settings.CaptureHotKey,
                     settings.StartPauseHotKey,
@@ -69,7 +102,7 @@ public sealed class SettingsService
                 settings.StopHotKey = HotKeyBindingService.DefaultStop;
             }
 
-            return settings;
+            return new SettingsLoadResult(settings, null, null);
         }
         catch (Exception exception) when (
             exception is IOException
@@ -77,8 +110,31 @@ public sealed class SettingsService
             or JsonException
             or NotSupportedException)
         {
-            return new AppSettings();
+            var brokenPath = MoveBrokenSettingsAside();
+            return new SettingsLoadResult(
+                new AppSettings(),
+                $"设置文件已损坏，已恢复默认设置。原文件保存在：{brokenPath}",
+                brokenPath);
         }
+    }
+
+    private string MoveBrokenSettingsAside()
+    {
+        var directory = Path.GetDirectoryName(SettingsPath)
+                        ?? throw new InvalidOperationException("设置文件路径无效。");
+        Directory.CreateDirectory(directory);
+        var brokenPath = Path.Combine(
+            directory,
+            $"settings.{DateTime.Now:yyyyMMdd-HHmmss-fff}.broken.json");
+        if (File.Exists(brokenPath))
+        {
+            brokenPath = Path.Combine(
+                directory,
+                $"settings.{DateTime.Now:yyyyMMdd-HHmmss-fff}-{Guid.NewGuid():N}.broken.json");
+        }
+
+        File.Move(SettingsPath, brokenPath);
+        return brokenPath;
     }
 
     public void Save(AppSettings settings)

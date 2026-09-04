@@ -1,9 +1,16 @@
 using OrderedClicker.Forms;
+using OrderedClicker.Services;
 
 namespace OrderedClicker;
 
 internal static class Program
 {
+#if PORTABLE
+    private const bool IsPortableBuild = true;
+#else
+    private const bool IsPortableBuild = false;
+#endif
+
     [STAThread]
     private static void Main()
     {
@@ -15,7 +22,11 @@ internal static class Program
         AppDomain.CurrentDomain.UnhandledException += (_, eventArgs) =>
             ShowFatalError(eventArgs.ExceptionObject as Exception);
 
-        Application.Run(new MainForm());
+        var dataPaths = AppDataPaths.Resolve(
+            Environment.ProcessPath ?? Application.ExecutablePath,
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            IsPortableBuild);
+        Application.Run(new MainForm(appDataPaths: dataPaths));
     }
 
     private static void ShowFatalError(Exception? exception)

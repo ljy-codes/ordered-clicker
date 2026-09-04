@@ -1,12 +1,15 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = "1.3.1"
+    [string]$Version = "2.0.0",
+
+    [switch]$Portable
 )
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $projectFile = Join-Path $projectRoot "src\OrderedClicker\OrderedClicker.csproj"
-$outputDirectory = Join-Path $projectRoot "publish\win-x64"
+$outputDirectory = Join-Path $projectRoot (
+    $Portable ? "publish\win-x64-portable" : "publish\win-x64")
 . (Join-Path $PSScriptRoot "path-safety.ps1")
 
 $resolvedOutput = Assert-SafeRecursivePath -Path $outputDirectory -ParentPath $projectRoot
@@ -18,21 +21,29 @@ if (Test-Path -LiteralPath $resolvedOutput) {
 
 New-Item -ItemType Directory -Force -Path $resolvedOutput | Out-Null
 
-& (Join-Path $PSScriptRoot "dotnet.ps1") publish $projectFile `
-    -c Release `
-    -r win-x64 `
-    --self-contained true `
-    '-p:PublishSingleFile=true' `
-    '-p:IncludeNativeLibrariesForSelfExtract=true' `
-    '-p:EnableCompressionInSingleFile=true' `
-    '-p:DebugType=embedded' `
-    '-p:DebugSymbols=false' `
-    "-p:Version=$Version" `
-    "-p:AssemblyVersion=${Version}.0" `
-    "-p:FileVersion=${Version}.0" `
-    "-p:InformationalVersion=$Version" `
-    -o $resolvedOutput `
-    '-m:1'
+$publishArguments = @(
+    "publish",
+    $projectFile,
+    "-c", "Release",
+    "-r", "win-x64",
+    "--self-contained", "true",
+    "-p:PublishSingleFile=true",
+    "-p:IncludeNativeLibrariesForSelfExtract=true",
+    "-p:EnableCompressionInSingleFile=true",
+    "-p:DebugType=embedded",
+    "-p:DebugSymbols=false",
+    "-p:Version=$Version",
+    "-p:AssemblyVersion=${Version}.0",
+    "-p:FileVersion=${Version}.0",
+    "-p:InformationalVersion=$Version",
+    "-o", $resolvedOutput,
+    "-m:1"
+)
+if ($Portable) {
+    $publishArguments += "-p:DefineConstants=PORTABLE"
+}
+
+& (Join-Path $PSScriptRoot "dotnet.ps1") @publishArguments
 
 if ($LASTEXITCODE -ne 0) {
     throw "发布失败，退出码：$LASTEXITCODE"

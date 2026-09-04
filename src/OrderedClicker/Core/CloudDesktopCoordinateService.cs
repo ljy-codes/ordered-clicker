@@ -62,4 +62,32 @@ public static class CloudDesktopCoordinateService
                 "云桌面相对坐标必须在 0 到 1 之间。");
         }
     }
+
+    public static int FillMissingRelativeCoordinates(
+        IEnumerable<ClickPoint> points,
+        CloudDesktopRegion region)
+    {
+        ArgumentNullException.ThrowIfNull(points);
+        ValidateRegion(region);
+        var filled = 0;
+        foreach (var point in points)
+        {
+            if (point.RelativeX is not null || point.RelativeY is not null)
+            {
+                continue;
+            }
+
+            if (!region.Bounds.Contains(point.X, point.Y))
+            {
+                continue;
+            }
+
+            var relative = ToRelative(region, point.X, point.Y);
+            point.RelativeX = relative.X;
+            point.RelativeY = relative.Y;
+            filled++;
+        }
+
+        return filled;
+    }
 }

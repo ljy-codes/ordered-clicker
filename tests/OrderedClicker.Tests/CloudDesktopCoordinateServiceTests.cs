@@ -11,6 +11,38 @@ internal static class CloudDesktopCoordinateServiceTests
         SupportsNegativeScreenCoordinates();
         RejectsSmallRegions();
         RejectsPointsOutsideRegion();
+        RecalibrationPreservesExistingRelativeCoordinates();
+    }
+
+    private static void RecalibrationPreservesExistingRelativeCoordinates()
+    {
+        var region = new CloudDesktopRegion
+        {
+            X = 100,
+            Y = 100,
+            Width = 1000,
+            Height = 600
+        };
+        var preserved = new ClickPoint
+        {
+            X = 300,
+            Y = 300,
+            RelativeX = 0.75,
+            RelativeY = 0.25
+        };
+        var missing = new ClickPoint { X = 600, Y = 400 };
+
+        var filled = CloudDesktopCoordinateService.FillMissingRelativeCoordinates(
+            [preserved, missing],
+            region);
+
+        TestAssert.Equal(1, filled, "重新校准时只应补充缺失坐标");
+        TestAssert.Equal(0.75, preserved.RelativeX!.Value,
+            "已有相对横坐标不能被新区域改写");
+        TestAssert.Equal(0.25, preserved.RelativeY!.Value,
+            "已有相对纵坐标不能被新区域改写");
+        TestAssert.Equal(0.5, missing.RelativeX!.Value,
+            "缺失坐标应根据新区域补算");
     }
 
     private static void ConvertsCoordinatesRoundTrip()

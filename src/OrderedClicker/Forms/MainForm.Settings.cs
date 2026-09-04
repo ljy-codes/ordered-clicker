@@ -34,11 +34,15 @@ public sealed partial class MainForm
 
         var selectedSettings = new AppSettings
         {
-            Version = 2,
+            Version = 3,
             Theme = dialog.SelectedThemeId,
             CaptureHotKey = dialog.CaptureHotKey,
             StartPauseHotKey = dialog.StartPauseHotKey,
-            StopHotKey = dialog.StopHotKey
+            StopHotKey = dialog.StopHotKey,
+            SafetyCornerEnabled = dialog.SafetyCornerEnabled,
+            SafetyCorner = dialog.SafetyCorner,
+            SafetyCornerSize = dialog.SafetyCornerSize,
+            SafetyCornerDwellMs = dialog.SafetyCornerDwellMs
         };
         var registrationChanged = false;
         try
@@ -75,6 +79,7 @@ public sealed partial class MainForm
             or UnauthorizedAccessException
             or InvalidOperationException)
         {
+            RecordDiagnostic("settings.save", exception);
             if (registrationChanged && _hotKeyCoordinator is not null)
             {
                 var rollback = _hotKeyCoordinator.Replace(
@@ -141,7 +146,11 @@ public sealed partial class MainForm
             Theme = settings.Theme,
             CaptureHotKey = settings.CaptureHotKey,
             StartPauseHotKey = settings.StartPauseHotKey,
-            StopHotKey = settings.StopHotKey
+            StopHotKey = settings.StopHotKey,
+            SafetyCornerEnabled = settings.SafetyCornerEnabled,
+            SafetyCorner = settings.SafetyCorner,
+            SafetyCornerSize = settings.SafetyCornerSize,
+            SafetyCornerDwellMs = settings.SafetyCornerDwellMs
         };
     }
 
@@ -158,6 +167,10 @@ public sealed partial class MainForm
         private readonly HotKeyInput _captureHotKeyInput;
         private readonly HotKeyInput _startPauseHotKeyInput;
         private readonly HotKeyInput _stopHotKeyInput;
+        private readonly CheckBox _safetyCornerEnabledCheckBox = new();
+        private readonly ComboBox _safetyCornerComboBox = new();
+        private readonly NumericUpDown _safetyCornerSizeInput = new();
+        private readonly NumericUpDown _safetyCornerDwellInput = new();
         private readonly Button _restoreDefaultHotKeysButton = new();
         private readonly Button _compatibilityHotKeysButton = new();
         private readonly FlowLayoutPanel _footerPanel = new();
@@ -176,11 +189,34 @@ public sealed partial class MainForm
             _stopHotKeyInput = new HotKeyInput(
                 "StopHotKeyInput",
                 settings.StopHotKey);
+            _safetyCornerEnabledCheckBox.Name = "SafetyCornerEnabledCheckBox";
+            _safetyCornerEnabledCheckBox.Text = "启用";
+            _safetyCornerEnabledCheckBox.Checked = settings.SafetyCornerEnabled;
+            _safetyCornerEnabledCheckBox.AutoSize = true;
+            _safetyCornerEnabledCheckBox.Margin = new Padding(0, 7, 8, 0);
+            _safetyCornerComboBox.Name = "SafetyCornerComboBox";
+            _safetyCornerComboBox.DropDownStyle = ComboBoxStyle.DropDownList;
+            _safetyCornerComboBox.Width = 92;
+            _safetyCornerComboBox.Items.AddRange(
+                ["左上角", "右上角", "左下角", "右下角"]);
+            _safetyCornerComboBox.SelectedIndex = (int)settings.SafetyCorner;
+            ConfigureSafetyNumberInput(
+                _safetyCornerSizeInput,
+                "SafetyCornerSizeInput",
+                4,
+                64,
+                settings.SafetyCornerSize);
+            ConfigureSafetyNumberInput(
+                _safetyCornerDwellInput,
+                "SafetyCornerDwellInput",
+                100,
+                3000,
+                settings.SafetyCornerDwellMs);
             Name = "ThemeSettingsDialog";
             Text = "设置";
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(700, 680);
-            MinimumSize = new Size(680, 640);
+            ClientSize = new Size(700, 748);
+            MinimumSize = new Size(680, 700);
             MaximizeBox = false;
             MinimizeBox = false;
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -203,6 +239,16 @@ public sealed partial class MainForm
 
         public HotKeyBinding StopHotKey => _stopHotKeyInput.Binding;
 
+        public bool SafetyCornerEnabled => _safetyCornerEnabledCheckBox.Checked;
+
+        public SafetyCorner SafetyCorner =>
+            (SafetyCorner)Math.Max(0, _safetyCornerComboBox.SelectedIndex);
+
+        public int SafetyCornerSize => decimal.ToInt32(_safetyCornerSizeInput.Value);
+
+        public int SafetyCornerDwellMs =>
+            decimal.ToInt32(_safetyCornerDwellInput.Value);
+
         private void ConfigureLayout()
         {
             _root.Dock = DockStyle.Fill;
@@ -211,7 +257,7 @@ public sealed partial class MainForm
             _root.Padding = new Padding(20);
             _root.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));
             _root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            _root.RowStyles.Add(new RowStyle(SizeType.Absolute, 206));
+            _root.RowStyles.Add(new RowStyle(SizeType.Absolute, 254));
             _root.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
 
             var header = new Panel { Dock = DockStyle.Fill };
@@ -265,7 +311,7 @@ public sealed partial class MainForm
             _hotKeyPanel.Name = "HotKeySettingsPanel";
             _hotKeyPanel.Dock = DockStyle.Fill;
             _hotKeyPanel.ColumnCount = 3;
-            _hotKeyPanel.RowCount = 5;
+            _hotKeyPanel.RowCount = 6;
             _hotKeyPanel.Padding = new Padding(0, 8, 0, 0);
             _hotKeyPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 126));
             _hotKeyPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 238));
@@ -275,6 +321,7 @@ public sealed partial class MainForm
             _hotKeyPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
             _hotKeyPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
             _hotKeyPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+            _hotKeyPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
 
             _hotKeyTitleLabel.AutoSize = true;
             _hotKeyTitleLabel.Font = new Font("Segoe UI Semibold", 11F);
@@ -289,12 +336,12 @@ public sealed partial class MainForm
             ConfigureHotKeyInput(_startPauseHotKeyInput);
             ConfigureHotKeyInput(_stopHotKeyInput);
             _restoreDefaultHotKeysButton.Name = "RestoreDefaultHotKeysButton";
-            ConfigureDialogButton(_restoreDefaultHotKeysButton, "简洁模式", false);
+            ConfigureDialogButton(_restoreDefaultHotKeysButton, "单键快捷键", false);
             _restoreDefaultHotKeysButton.Width = 106;
             _restoreDefaultHotKeysButton.Margin = new Padding(0, 5, 0, 0);
             _restoreDefaultHotKeysButton.Click += (_, _) => RestoreDefaultHotKeys();
             _compatibilityHotKeysButton.Name = "CompatibilityHotKeysButton";
-            ConfigureDialogButton(_compatibilityHotKeysButton, "兼容模式", false);
+            ConfigureDialogButton(_compatibilityHotKeysButton, "组合快捷键", false);
             _compatibilityHotKeysButton.Width = 106;
             _compatibilityHotKeysButton.Margin = new Padding(8, 5, 0, 0);
             _compatibilityHotKeysButton.Click += (_, _) => UseCompatibilityHotKeys();
@@ -308,6 +355,68 @@ public sealed partial class MainForm
             AddHotKeyRow(3, "停止", _stopHotKeyInput);
             _hotKeyPanel.Controls.Add(_restoreDefaultHotKeysButton, 1, 4);
             _hotKeyPanel.Controls.Add(_compatibilityHotKeysButton, 2, 4);
+            AddSafetyCornerRow();
+        }
+
+        private void AddSafetyCornerRow()
+        {
+            var label = new Label
+            {
+                AutoSize = true,
+                Text = "安全角停止",
+                Margin = new Padding(0, 11, 8, 0)
+            };
+            var controls = new FlowLayoutPanel
+            {
+                Name = "SafetyCornerControls",
+                Dock = DockStyle.Fill,
+                AutoSize = false,
+                WrapContents = false,
+                Margin = new Padding(0, 3, 0, 0)
+            };
+            controls.Controls.Add(_safetyCornerEnabledCheckBox);
+            controls.Controls.Add(_safetyCornerComboBox);
+            controls.Controls.Add(new Label
+            {
+                AutoSize = true,
+                Text = "范围",
+                Margin = new Padding(8, 9, 3, 0)
+            });
+            controls.Controls.Add(_safetyCornerSizeInput);
+            controls.Controls.Add(new Label
+            {
+                AutoSize = true,
+                Text = "px  停留",
+                Margin = new Padding(3, 9, 3, 0)
+            });
+            controls.Controls.Add(_safetyCornerDwellInput);
+            controls.Controls.Add(new Label
+            {
+                AutoSize = true,
+                Text = "ms",
+                Margin = new Padding(3, 9, 0, 0)
+            });
+
+            _hotKeyPanel.Controls.Add(label, 0, 5);
+            _hotKeyPanel.Controls.Add(controls, 1, 5);
+            _hotKeyPanel.SetColumnSpan(controls, 2);
+        }
+
+        private static void ConfigureSafetyNumberInput(
+            NumericUpDown input,
+            string name,
+            int minimum,
+            int maximum,
+            int value)
+        {
+            input.Name = name;
+            input.Minimum = minimum;
+            input.Maximum = maximum;
+            input.Value = Math.Clamp(value, minimum, maximum);
+            input.Width = 64;
+            input.Height = 28;
+            input.Margin = new Padding(0, 3, 0, 0);
+            input.TextAlign = HorizontalAlignment.Right;
         }
 
         private void AddHotKeyRow(int row, string labelText, HotKeyInput input)
@@ -424,6 +533,23 @@ public sealed partial class MainForm
                         break;
                 }
             }
+            foreach (Control control in EnumerateControls(_hotKeyPanel))
+            {
+                switch (control)
+                {
+                    case NumericUpDown or ComboBox:
+                        control.BackColor = theme.Input;
+                        control.ForeColor = theme.Text;
+                        break;
+                    case CheckBox or Label:
+                        control.BackColor = theme.Window;
+                        control.ForeColor = theme.MutedText;
+                        break;
+                    case FlowLayoutPanel:
+                        control.BackColor = theme.Window;
+                        break;
+                }
+            }
 
             ApplyDialogButtonTheme(_saveButton, theme, true);
             ApplyDialogButtonTheme(_cancelButton, theme, false);
@@ -431,6 +557,18 @@ public sealed partial class MainForm
             ApplyDialogButtonTheme(_compatibilityHotKeysButton, theme, false);
             ApplyTitleBarTheme(theme);
             Invalidate(true);
+        }
+
+        private static IEnumerable<Control> EnumerateControls(Control parent)
+        {
+            foreach (Control child in parent.Controls)
+            {
+                yield return child;
+                foreach (var descendant in EnumerateControls(child))
+                {
+                    yield return descendant;
+                }
+            }
         }
 
         private static void ApplyDialogButtonTheme(Button button, AppTheme theme, bool primary)

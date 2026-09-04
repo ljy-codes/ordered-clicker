@@ -18,14 +18,18 @@ internal static class UiSmokeTests
         AssertThemeSettingsEntry(form);
         AssertSettingsDisabledDuringExecution(form);
         AssertGlobalTimingControls(form);
+        AssertStepWorkspace(form);
+        AssertRunSupportControls(form);
         AssertCloudDesktopControls(form);
         AssertSaveCommands(form);
         AssertProfileDirectoryControls(form);
         AssertKeyboardProfileSelectionCapturesCurrentText(form);
         AssertImportedCopyRequiresSaveAs(form);
+        AssertImportConfirmsBeforeProfileSwitch();
         AssertLocalProfileBindsSourceFile(form);
         AssertGlobalTimingApplication(form);
         AssertDefaultHotKeyText(form);
+        AssertPointUndoHistoryBounded(form);
         AssertUnchangedHotKeysAreDetected();
         AssertThemeSettingsDialog(form);
         AssertConfiguredThemeLoads();
@@ -33,6 +37,67 @@ internal static class UiSmokeTests
         AssertThemePreviewCancelAndSave();
         AssertUsageHelpDialog(form);
         AssertMinimumWindowLayout();
+    }
+
+    private static void AssertStepWorkspace(MainForm form)
+    {
+        var controls = EnumerateControls(form).ToList();
+        var expectedNavigation = new[]
+        {
+            "WorkspaceModeButton",
+            "WorkspacePlanButton",
+            "WorkspaceCaptureButton",
+            "WorkspaceCheckButton",
+            "WorkspaceRunButton"
+        };
+
+        foreach (var name in expectedNavigation)
+        {
+            TestAssert.True(
+                controls.OfType<Button>().Any(button => button.Name == name),
+                $"分步工作台应包含导航按钮 {name}");
+        }
+
+        TestAssert.True(
+            controls.Any(control => control.Name == "WorkspacePageHost"),
+            "分步工作台应包含中央页面宿主");
+        TestAssert.True(
+            controls.Any(control => control.Name == "WorkspaceStatusPanel"),
+            "分步工作台应包含常驻状态面板");
+        TestAssert.True(
+            controls.Any(control => control.Name == "CaptureEmptyStateLabel"),
+            "采点页应包含空状态");
+    }
+
+    private static void AssertRunSupportControls(MainForm form)
+    {
+        var names = EnumerateControls(form)
+            .Select(control => control.Name)
+            .ToHashSet(StringComparer.Ordinal);
+        TestAssert.True(
+            names.Contains("OpenExecutionLogsButton"),
+            "运行页应提供执行日志目录入口");
+        TestAssert.True(
+            names.Contains("OpenDiagnosticsButton"),
+            "运行页应提供诊断目录入口");
+
+        var statusFormType = typeof(MainForm).Assembly.GetType(
+            "OrderedClicker.Forms.RunStatusForm");
+        TestAssert.True(statusFormType is not null, "运行时应提供置顶状态小窗");
+        using var statusForm = (Form)Activator.CreateInstance(
+            statusFormType!,
+            BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public,
+            binder: null,
+            args: [AppThemeCatalog.Get(AppThemeId.Aurora)],
+            culture: null)!;
+        var statusControls = EnumerateControls(statusForm)
+            .Select(control => control.Name)
+            .ToHashSet(StringComparer.Ordinal);
+        TestAssert.True(
+            statusForm.TopMost
+            && statusControls.Contains("RunStatusPauseButton")
+            && statusControls.Contains("RunStatusStopButton"),
+            "运行状态小窗应置顶并提供暂停和停止");
     }
 
     private static void AssertCloudDesktopControls(MainForm form)
@@ -64,6 +129,44 @@ internal static class UiSmokeTests
             "主窗体应包含导入方案按钮");
         TestAssert.True(buttons.Any(button => button.Name == "ExportProfileButton"),
             "主窗体应包含导出方案按钮");
+    }
+
+    private static void AssertImportConfirmsBeforeProfileSwitch()
+    {
+        var importMethod = typeof(MainForm).GetMethod(
+            "ImportProfile",
+            BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("缺少 ImportProfile 方法");
+        var confirmMethod = typeof(MainForm).GetMethod(
+            "ConfirmSaveBeforeProfileSwitch",
+            BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("缺少切换前保存确认方法");
+        var applyMethod = typeof(MainForm).GetMethod(
+            "ApplyImportedProfile",
+            BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("缺少导入方案应用方法");
+        var il = importMethod.GetMethodBody()?.GetILAsByteArray()
+                 ?? throw new InvalidOperationException("无法读取 ImportProfile 方法体");
+        var confirmCallIndex = FindMetadataToken(il, confirmMethod.MetadataToken);
+        var applyCallIndex = FindMetadataToken(il, applyMethod.MetadataToken);
+
+        TestAssert.True(
+            confirmCallIndex >= 0 && applyCallIndex > confirmCallIndex,
+            "迁移旧方案前必须先确认当前未保存修改");
+    }
+
+    private static int FindMetadataToken(byte[] il, int metadataToken)
+    {
+        var token = BitConverter.GetBytes(metadataToken);
+        for (var index = 0; index <= il.Length - token.Length; index++)
+        {
+            if (il.AsSpan(index, token.Length).SequenceEqual(token))
+            {
+                return index;
+            }
+        }
+
+        return -1;
     }
 
     private static void AssertProfileDirectoryControls(MainForm form)
@@ -129,11 +232,11 @@ internal static class UiSmokeTests
         TestAssert.True(importedSourcePathField is not null,
             "导入副本应保留来源路径用于防覆盖");
 
-        var sourcePath = @"C:\profiles\source.json";
+        var sourcePath = @"C:\profiles\source.oclick";
         currentPathField!.SetValue(form, sourcePath);
         applyImportedProfile!.Invoke(
             form,
-            [new ClickProfile { Version = 3, Name = "导入副本" }, sourcePath]);
+            [new ClickProfile { FormatVersion = 4, Name = "导入副本" }, sourcePath]);
 
         TestAssert.True(currentPathField.GetValue(form) is null,
             "导入副本不应绑定来源文件路径");
@@ -166,10 +269,10 @@ internal static class UiSmokeTests
         TestAssert.True(hasUnsavedChanges is not null,
             "主窗体应能识别未保存方案修改");
 
-        var sourcePath = @"C:\profiles\local.json";
+        var sourcePath = @"C:\profiles\local.oclick";
         applyLocalProfile!.Invoke(
             form,
-            [new ClickProfile { Version = 2, Name = "本机方案" }, sourcePath]);
+            [new ClickProfile { FormatVersion = 4, Name = "本机方案" }, sourcePath]);
 
         TestAssert.True(
             ProfileService.PathsEqual(
@@ -286,7 +389,7 @@ internal static class UiSmokeTests
                 TestAssert.True(child.Right <= parent.ClientSize.Width + 1,
                     $"{child.GetType().Name} 不应超出父容器右侧");
                 TestAssert.True(child.Bottom <= parent.ClientSize.Height + 1,
-                    $"{child.GetType().Name} 不应超出父容器底部");
+                    $"{child.GetType().Name}（{child.Name} / {child.Text}）不应超出父容器底部");
             }
 
             AssertControlsStayInsideParents(child);
@@ -341,9 +444,10 @@ internal static class UiSmokeTests
         TestAssert.Equal("? 使用说明", helpButton!.Text, "使用说明按钮文案应明确");
         TestAssert.True(helpButton.Width >= 140, "使用说明按钮应保持足够宽度");
 
-        var clearButton = buttons.Single(button => button.Text == "清空");
-        TestAssert.True(helpButton.Left > clearButton.Right,
-            "使用说明按钮应位于清空按钮右侧的空闲区域");
+        TestAssert.Equal(
+            "WorkspaceStatusPanel",
+            helpButton.Parent?.Name,
+            "使用说明应位于常驻状态面板");
     }
 
     private static void AssertConfiguredThemeLoads()
@@ -423,12 +527,18 @@ internal static class UiSmokeTests
         TestAssert.Equal("⚙ 设置", settingsButton!.Text, "主题设置按钮文案应明确");
         TestAssert.True(settingsButton.Width >= 120, "主题设置按钮应保持足够宽度");
 
-        var clearButton = buttons.Single(button => button.Text == "清空");
         var helpButton = buttons.Single(button => button.Name == "UsageHelpButton");
-        TestAssert.True(settingsButton.Left > clearButton.Right,
-            "主题设置按钮应位于清空按钮右侧的空闲区域");
-        TestAssert.True(helpButton.Left > settingsButton.Right,
-            "使用说明按钮应排列在主题设置按钮右侧");
+        TestAssert.Equal(
+            "WorkspaceStatusPanel",
+            settingsButton.Parent?.Name,
+            "主题设置应位于常驻状态面板");
+        var settingsParent = settingsButton.Parent
+            ?? throw new InvalidOperationException("主题设置按钮缺少父容器");
+        TestAssert.True(
+            ReferenceEquals(helpButton.Parent, settingsParent)
+            && settingsParent.Controls.GetChildIndex(helpButton)
+            > settingsParent.Controls.GetChildIndex(settingsButton),
+            "使用说明按钮应在命令顺序上排列在主题设置按钮之后");
     }
 
     private static void AssertSettingsDisabledDuringExecution(MainForm form)
@@ -563,6 +673,7 @@ internal static class UiSmokeTests
         var dialogUsesCurrentTheme = false;
         var hotKeyControlNames = new HashSet<string>();
         var restoreDefaultsButtonFound = false;
+        var safetyCornerControlsFound = false;
         using var timer = new System.Windows.Forms.Timer { Interval = 20 };
         timer.Tick += (_, _) =>
         {
@@ -584,6 +695,12 @@ internal static class UiSmokeTests
             restoreDefaultsButtonFound = EnumerateControls(dialog)
                 .OfType<Button>()
                 .Any(button => button.Name == "RestoreDefaultHotKeysButton");
+            var controlNames = EnumerateControls(dialog)
+                .Select(control => control.Name)
+                .ToHashSet(StringComparer.Ordinal);
+            safetyCornerControlsFound =
+                controlNames.Contains("SafetyCornerEnabledCheckBox")
+                && controlNames.Contains("SafetyCornerComboBox");
             dialogUsesCurrentTheme = dialog.BackColor == form.BackColor;
             dialog.Close();
         };
@@ -603,7 +720,28 @@ internal static class UiSmokeTests
                 ]),
             "设置弹窗应包含三个快捷键输入框");
         TestAssert.True(restoreDefaultsButtonFound, "设置弹窗应包含恢复默认快捷键按钮");
+        TestAssert.True(
+            safetyCornerControlsFound,
+            "设置弹窗应包含安全角开关和位置选择");
         TestAssert.True(dialogUsesCurrentTheme, "设置弹窗应使用当前主题");
+    }
+
+    private static void AssertPointUndoHistoryBounded(MainForm form)
+    {
+        var pushUndo = typeof(MainForm).GetMethod(
+            "PushPointUndo",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        var undoStackField = typeof(MainForm).GetField(
+            "_pointUndoStack",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+
+        for (var index = 0; index < 15; index++)
+        {
+            pushUndo!.Invoke(form, null);
+        }
+
+        var stack = (System.Collections.ICollection)undoStackField!.GetValue(form)!;
+        TestAssert.Equal(10, stack.Count, "采点撤销历史最多应保留 10 次");
     }
 
     private static void AssertDefaultHotKeyText(MainForm form)
@@ -785,12 +923,15 @@ internal static class UiSmokeTests
             dialogText.Contains("应用全部") && dialogText.Contains("新采集点"),
             "使用说明应包含全局时间设置和新点继承说明");
         TestAssert.True(
-            dialogText.Contains("导入为副本") && dialogText.Contains("导出方案"),
-            "使用说明应解释方案导入和导出语义");
+            dialogText.Contains(".oclick")
+            && dialogText.Contains("打开方案")
+            && dialogText.Contains("迁移旧方案"),
+            "使用说明应解释 v4 方案打开和旧 JSON 迁移语义");
         TestAssert.True(
             dialogText.Contains("方案下拉")
             && dialogText.Contains("打开方案目录")
-            && dialogText.Contains("保存 / 不保存 / 取消"),
+            && dialogText.Contains("保存 / 不保存 / 取消")
+            && dialogText.Contains("活动草稿"),
             "使用说明应解释本机方案目录和切换保护");
         TestAssert.True(dialogUsesCurrentTheme, "使用说明弹窗应使用当前主题");
     }

@@ -21,6 +21,11 @@ public sealed class ExecutionLogService
             "logs");
     }
 
+    public ExecutionLogService(AppDataPaths paths)
+        : this(paths?.Logs)
+    {
+    }
+
     public string LogDirectory { get; }
 
     public string Write(ExecutionPlan plan, ExecutionResult result)

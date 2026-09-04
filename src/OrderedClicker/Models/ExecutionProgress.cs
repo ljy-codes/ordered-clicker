@@ -18,6 +18,8 @@ public sealed record ExecutionProgress(
 
     public long PlannedClickCount { get; init; }
 
+    public ExecutionStage Stage { get; init; } = ExecutionStage.Move;
+
     public bool RequiresUserContinue { get; init; }
 
     public string Message { get; init; } = string.Empty;

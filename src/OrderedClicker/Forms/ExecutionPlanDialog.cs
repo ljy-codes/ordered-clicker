@@ -37,6 +37,9 @@ public sealed class ExecutionPlanDialog : Form
                 + $"总循环：{plan.TotalLoops}{Environment.NewLine}"
                 + $"计划点次：{plan.PlannedPointExecutionCount}{Environment.NewLine}"
                 + $"计划点击：{plan.PlannedClickCount}{Environment.NewLine}"
+                + $"预计耗时：{FormatDuration(plan.EstimatedBaseDuration)}"
+                + $" 至 {FormatDuration(plan.EstimatedMaximumDuration)}"
+                + $"{Environment.NewLine}"
                 + $"坐标范围：{plan.StabilityRegion.Width} × {plan.StabilityRegion.Height}"
                 + $"{Environment.NewLine}"
                 + $"画面稳定等待：{(plan.ScreenStability.Enabled ? "开启" : "关闭")}"
@@ -64,6 +67,21 @@ public sealed class ExecutionPlanDialog : Form
         Controls.Add(buttons);
         AcceptButton = start;
         CancelButton = cancel;
+    }
+
+    private static string FormatDuration(TimeSpan duration)
+    {
+        if (duration.TotalHours >= 1)
+        {
+            return $"{(int)duration.TotalHours}小时 {duration.Minutes}分 {duration.Seconds}秒";
+        }
+
+        if (duration.TotalMinutes >= 1)
+        {
+            return $"{duration.Minutes}分 {duration.Seconds}秒";
+        }
+
+        return $"{Math.Max(1, (int)Math.Ceiling(duration.TotalSeconds))}秒";
     }
 
     private static Button CreateButton(string text, Color background, Color foreground)

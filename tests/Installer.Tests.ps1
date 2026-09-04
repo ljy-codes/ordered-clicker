@@ -141,12 +141,15 @@ Assert-Contains `
     -Expected "<IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>" `
     -Name "产品版本不附加提交哈希"
 Assert-Contains -Content $buildScript -Expected "publish.ps1" -Name "复用发布脚本"
+Assert-Contains -Content $buildScript -Expected '-Portable' -Name "免安装版使用独立编译模式"
+Assert-Contains -Content $publishScript -Expected 'DefineConstants=PORTABLE' -Name "便携模式使用编译常量"
 Assert-Contains -Content $buildScript -Expected "Compress-Archive" -Name "生成便携版"
 Assert-Contains `
     -Content $buildScript `
-    -Expected 'foreach ($packagePath in @($installerPath, $publishedExecutable))' `
-    -Name "产品目录复制安装包和免安装 EXE"
+    -Expected '"有序连点器-免安装.exe"' `
+    -Name "产品目录使用明确的中文免安装文件名"
 Assert-Contains -Content $buildScript -Expected "Get-FileHash" -Name "校验交付复制"
+Assert-Contains -Content $buildScript -Expected '"SHA256SUMS.txt"' -Name "生成 SHA-256 清单"
 Assert-Contains -Content $buildScript -Expected "有序连点器-使用说明.pdf" -Name "复制 PDF"
 Assert-Contains -Content $buildScript -Expected "有序连点器-使用说明.html" -Name "复制 HTML"
 Assert-NotContains `
@@ -161,34 +164,60 @@ Assert-Contains `
     -Expected 'Join-Path $projectRoot "有序连点器"' `
     -Name "默认产品目录位于连点器项目内"
 Assert-Contains -Content $buildScript -Expected '$ownedProductPatterns' -Name "清理旧版本产品文件"
+Assert-Contains -Content $buildScript -Expected '".ordered-clicker-backup-$deliveryId"' -Name "交付目录支持事务回滚"
 Assert-Contains `
     -Content $buildScript `
     -Expected "产品目录包含非交付项" `
     -Name "拒绝产品目录残留额外文件或目录"
 Assert-Contains -Content $buildScript -Expected '"OrderedClicker.exe"' -Name "清理旧免安装 EXE"
-Assert-NotContains `
-    -Content $buildScript `
-    -Unexpected '$currentProductNames.Add("SHA256SUMS.txt")' `
-    -Name "产品目录不生成校验文件"
+Assert-Contains -Content $buildScript -Expected '$expectedProductNames' -Name "产品目录包含校验文件"
 Assert-Contains -Content $buildScript -Expected "Assert-SafeRecursivePath" -Name "打包清理路径安全检查"
 Assert-NotContains -Content $buildScript -Unexpected "Inno Setup 6" -Name "只允许 Inno Setup 7"
 Assert-Contains `
     -Content $publishScript `
     -Expected '$unexpectedRuntimeFiles = @(' `
     -Name "严格模式下稳定检查发布文件"
-Assert-Contains -Content $publishScript -Expected '[string]$Version = "1.3.1"' -Name "发布脚本接收版本"
-Assert-Contains -Content $project -Expected "<Version>1.3.1</Version>" -Name "项目版本为 1.3.1"
-Assert-Contains -Content $installer -Expected '#define AppVersion "1.3.1"' -Name "安装器默认版本为 1.3.1"
-Assert-Contains -Content $buildScript -Expected '[string]$Version = "1.3.1"' -Name "构建脚本默认版本为 1.3.1"
+Assert-Contains -Content $publishScript -Expected '[string]$Version = "2.0.0"' -Name "发布脚本接收版本"
+Assert-Contains -Content $project -Expected "<Version>2.0.0</Version>" -Name "项目版本为 2.0.0"
+Assert-Contains -Content $installer -Expected '#define AppVersion "2.0.0"' -Name "安装器默认版本为 2.0.0"
+Assert-Contains -Content $buildScript -Expected '[string]$Version = "2.0.0"' -Name "构建脚本默认版本为 2.0.0"
+Assert-Contains -Content $buildScript -Expected '[switch]$Release' -Name "发布构建显式区分签名模式"
+Assert-Contains -Content $buildScript -Expected '[string]$SigningCertificatePath' -Name "发布构建接收签名证书"
+Assert-Contains -Content $buildScript -Expected 'ORDERED_CLICKER_SIGNING_PASSWORD' -Name "签名密码从环境变量读取"
+Assert-Contains `
+    -Content $buildScript `
+    -Expected 'Remove-Item Env:\ORDERED_CLICKER_SIGNING_PASSWORD' `
+    -Name "签名密码读取后立即从环境变量清除"
+Assert-Contains -Content $buildScript -Expected 'Import-PfxCertificate' -Name "签名证书导入用户证书库"
+Assert-Contains -Content $buildScript -Expected '/sha1 $CertificateThumbprint' -Name "签名按证书指纹执行"
+Assert-NotContains -Content $buildScript -Unexpected '/p $Password' -Name "签名密码不进入原生命令行"
+Assert-Contains -Content $buildScript -Expected '[string]$TimestampUrl' -Name "发布构建接收时间戳地址"
+Assert-Contains -Content $buildScript -Expected 'Get-AuthenticodeSignature' -Name "发布构建验证 Authenticode 签名"
 Assert-Contains -Content $publishScript -Expected '"-p:FileVersion=${Version}.0"' -Name "EXE 文件版本透传"
 Assert-Contains -Content $publishScript -Expected "Assert-SafeRecursivePath" -Name "发布清理路径安全检查"
 Assert-Contains -Content $pathSafety -Expected "[System.IO.FileAttributes]::ReparsePoint" -Name "拒绝重解析点"
 Assert-Contains -Content $readme -Expected "PowerShell 7" -Name "构建依赖说明"
 Assert-Contains -Content $readme -Expected "最终产品目录只包含" -Name "最小交付说明"
 Assert-Contains `
+    -Content $buildScript `
+    -Expected '$deliveryCommitted' `
+    -Name "交付备份清理由提交状态控制"
+Assert-Contains `
+    -Content $buildScript `
+    -Expected '$preserveDeliveryBackup' `
+    -Name "回滚失败时保留唯一交付备份"
+Assert-Contains `
+    -Content $buildScript `
+    -Expected '$preserveDeliveryBackup = Test-Path -LiteralPath $safeDeliveryBackupDirectory' `
+    -Name "回滚清理前先锁定备份保留状态"
+Assert-Contains `
+    -Content $buildScript `
+    -Expected '无法清理旧交付备份，已保留' `
+    -Name "提交成功后的备份清理失败只告警并保留"
+Assert-Contains `
     -Content $readme `
-    -Expected "安装版 EXE、免安装 EXE、PDF 使用说明和 HTML 使用说明" `
-    -Name "四文件交付说明"
+    -Expected "安装版 EXE、免安装 EXE、PDF 使用说明、HTML 使用说明和 SHA256SUMS.txt" `
+    -Name "五文件交付说明"
 
 $guidePreflightIndex = $buildScript.IndexOf("缺少指导文件", [StringComparison]::Ordinal)
 $publishIndex = $buildScript.IndexOf("发布 Windows x64 自包含应用", [StringComparison]::Ordinal)

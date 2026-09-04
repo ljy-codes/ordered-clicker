@@ -12,9 +12,38 @@ internal static class ThemeSettingsTests
         ThemeCatalogContainsFiveReadableThemes();
         SettingsRoundTripPreservesTheme();
         SettingsRoundTripPreservesHotKeys();
+        SettingsRoundTripPreservesSafetyCorner();
         LegacySettingsUseDefaultHotKeys();
         MigratesLegacyDefaultHotKeysButKeepsCustomBindings();
         MissingOrInvalidSettingsUseAurora();
+    }
+
+    private static void SettingsRoundTripPreservesSafetyCorner()
+    {
+        var directory = CreateTemporaryDirectory();
+        try
+        {
+            var service = new SettingsService(Path.Combine(directory, "settings.json"));
+            service.Save(new AppSettings
+            {
+                SafetyCornerEnabled = true,
+                SafetyCorner = SafetyCorner.BottomRight,
+                SafetyCornerSize = 12,
+                SafetyCornerDwellMs = 450
+            });
+
+            var loaded = service.Load();
+
+            TestAssert.True(loaded.SafetyCornerEnabled, "安全角开关应持久化");
+            TestAssert.Equal(SafetyCorner.BottomRight, loaded.SafetyCorner,
+                "安全角位置应持久化");
+            TestAssert.Equal(12, loaded.SafetyCornerSize, "安全角尺寸应持久化");
+            TestAssert.Equal(450, loaded.SafetyCornerDwellMs, "安全角停留时间应持久化");
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
     }
 
     private static void MigratesLegacyDefaultHotKeysButKeepsCustomBindings()

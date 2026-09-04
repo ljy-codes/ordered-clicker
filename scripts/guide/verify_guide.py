@@ -1,292 +1,80 @@
 from __future__ import annotations
 
 import argparse
-import re
-import subprocess
 import sys
 from pathlib import Path
-from urllib.parse import unquote
 
 from pypdf import PdfReader
 
 
 ROOT = Path(__file__).resolve().parents[2]
 GUIDE_DIR = ROOT / "操作指导"
-ASSETS_DIR = GUIDE_DIR / "assets"
+HTML_PATH = GUIDE_DIR / "有序连点器-使用说明.html"
+PDF_PATH = GUIDE_DIR / "有序连点器-使用说明.pdf"
+
+REQUIRED_TERMS = (
+    "2.0.0",
+    "五步",
+    ".oclick",
+    "迁移旧方案",
+    "活动草稿",
+    "2 秒后记录",
+    "F6",
+    "F7",
+    "F8",
+    "安全角",
+    "计划点击",
+    "预计耗时",
+    "可靠断点",
+    "云桌面",
+    "画面稳定",
+    "有序连点器-免安装.exe",
+    "SHA256SUMS.txt",
+)
+
+FORBIDDEN_TERMS = (
+    "1.3.1",
+    "导入为副本",
+    "ordered-clicker-portable-v1.3.1.zip",
+)
 
 
-def fail(message: str) -> None:
-    raise AssertionError(message)
-
-
-def require_file(path: Path, minimum_size: int = 1) -> None:
+def require_file(path: Path, minimum_size: int) -> None:
     if not path.is_file():
-        fail(f"缺少文件: {path}")
+        raise AssertionError(f"文件不存在: {path}")
     if path.stat().st_size < minimum_size:
-        fail(f"文件过小或为空: {path}")
+        raise AssertionError(f"文件过小: {path} ({path.stat().st_size} bytes)")
 
 
-def verify_local_links(html_path: Path) -> None:
-    html = html_path.read_text(encoding="utf-8")
-    for raw in re.findall(r"""(?:src|href)=["']([^"']+)["']""", html):
-        if raw.startswith(
-            ("#", "http://", "https://", "mailto:", "javascript:", "data:")
-        ):
-            continue
-        clean = unquote(raw.split("#", 1)[0].split("?", 1)[0])
-        if not clean:
-            continue
-        if (
-            clean == "有序连点器-视频演示.mp4"
-            and (html_path.parent / "有序连点器-完整操作教程.mp4").is_file()
-        ):
-            continue
-        target = (html_path.parent / clean).resolve()
-        if not target.exists():
-            fail(f"HTML 本地资源不存在: {raw} -> {target}")
+def verify_text(name: str, text: str) -> None:
+    missing = [term for term in REQUIRED_TERMS if term not in text]
+    if missing:
+        raise AssertionError(f"{name} 缺少关键内容: {', '.join(missing)}")
+    stale = [term for term in FORBIDDEN_TERMS if term in text]
+    if stale:
+        raise AssertionError(f"{name} 含过时内容: {', '.join(stale)}")
 
 
-def srt_seconds(value: str) -> float:
-    hours, minutes, rest = value.split(":")
-    seconds, millis = rest.split(",")
-    return (
-        int(hours) * 3600
-        + int(minutes) * 60
-        + int(seconds)
-        + int(millis) / 1000
-    )
+def main() -> int:
+    require_file(HTML_PATH, 100_000)
+    require_file(PDF_PATH, 100_000)
 
+    html = HTML_PATH.read_text(encoding="utf-8")
+    verify_text("HTML", html)
+    if "data:image/png;base64," not in html:
+        raise AssertionError("HTML 未内嵌界面截图")
+    if 'src="assets/' in html or 'href="assets/' in html:
+        raise AssertionError("HTML 仍依赖外部 assets 目录")
 
-def verify_srt(path: Path) -> tuple[int, float]:
-    text = path.read_text(encoding="utf-8-sig")
-    matches = re.findall(
-        r"(?m)^(\d{2}:\d{2}:\d{2},\d{3}) --> "
-        r"(\d{2}:\d{2}:\d{2},\d{3})$",
-        text,
-    )
-    if not matches:
-        fail("字幕文件中没有有效时间轴")
+    reader = PdfReader(str(PDF_PATH))
+    if len(reader.pages) < 8:
+        raise AssertionError(f"PDF 页数不足: {len(reader.pages)}")
+    pdf_text = "\n".join(page.extract_text() or "" for page in reader.pages)
+    verify_text("PDF", pdf_text)
 
-    previous_end = 0.0
-    for start_text, end_text in matches:
-        start = srt_seconds(start_text)
-        end = srt_seconds(end_text)
-        if start < previous_end - 0.02:
-            fail(f"字幕时间轴重叠或倒退: {start_text}")
-        if end <= start:
-            fail(f"字幕结束时间无效: {start_text} -> {end_text}")
-        previous_end = end
-    return len(matches), previous_end
-
-
-def find_ffmpeg() -> Path:
-    candidates = list(
-        (ROOT / ".tools" / "python" / "imageio_ffmpeg" / "binaries").glob(
-            "ffmpeg-*.exe"
-        )
-    )
-    if not candidates:
-        fail("未找到项目本地 FFmpeg")
-    return candidates[0]
-
-
-def verify_video(path: Path) -> tuple[float, str, float]:
-    ffmpeg = find_ffmpeg()
-    result = subprocess.run(
-        [str(ffmpeg), "-hide_banner", "-i", str(path)],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-    )
-    metadata = result.stderr
-
-    duration_match = re.search(r"Duration: (\d+):(\d+):(\d+\.\d+)", metadata)
-    if not duration_match:
-        fail("无法读取视频时长")
-    hours, minutes, seconds = duration_match.groups()
-    duration = int(hours) * 3600 + int(minutes) * 60 + float(seconds)
-
-    if not 599.0 <= duration <= 601.0:
-        fail(f"视频时长不是约 10 分钟: {duration:.2f}s")
-    if not re.search(r"Video: h264.*1920x1080", metadata):
-        fail("视频不是 H.264 1920x1080")
-    if not re.search(r"Audio: aac", metadata):
-        fail("视频缺少 AAC 音轨")
-
-    decode = subprocess.run(
-        [
-            str(ffmpeg),
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-ss",
-            "599",
-            "-i",
-            str(path),
-            "-t",
-            "0.5",
-            "-f",
-            "null",
-            "NUL",
-        ],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-    )
-    if decode.returncode != 0:
-        fail(f"视频结尾解码失败: {decode.stderr.strip()}")
-
-    volume = subprocess.run(
-        [
-            str(ffmpeg),
-            "-hide_banner",
-            "-nostats",
-            "-i",
-            str(path),
-            "-vn",
-            "-af",
-            "volumedetect",
-            "-f",
-            "null",
-            "NUL",
-        ],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-    )
-    volume_match = re.search(r"mean_volume: (-?\d+(?:\.\d+)?) dB", volume.stderr)
-    if not volume_match:
-        fail("无法读取视频音轨响度")
-    mean_volume = float(volume_match.group(1))
-    if mean_volume < -35.0:
-        fail(f"视频旁白音量过低: {mean_volume:.1f} dB")
-
-    return duration, "H.264 1920x1080 + AAC", mean_volume
-
-
-def main(skip_video: bool = False) -> int:
-    required = {
-        "使用说明 HTML": (GUIDE_DIR / "有序连点器-使用说明.html", 100_000),
-        "使用说明 PDF": (GUIDE_DIR / "有序连点器-使用说明.pdf", 100_000),
-        "完整视频": (GUIDE_DIR / "有序连点器-完整操作教程.mp4", 5_000_000),
-        "字幕": (GUIDE_DIR / "有序连点器-视频字幕.srt", 5_000),
-        "旁白稿": (GUIDE_DIR / "有序连点器-旁白稿.md", 3_000),
-        "分镜表": (GUIDE_DIR / "有序连点器-视频分镜表.md", 3_000),
-        "演示靶场": (GUIDE_DIR / "连点演示靶场.html", 5_000),
-        "视频封面": (ASSETS_DIR / "视频封面.png", 20_000),
-    }
-    for _, (path, size) in required.items():
-        require_file(path, size)
-
-    prd_html = required["使用说明 HTML"][0]
-    prd_text = prd_html.read_text(encoding="utf-8")
-    prd_terms = [
-        "采点模式",
-        "点击次数",
-        "点击间隔",
-        "点后等待",
-        "应用全部",
-        "新采集点",
-        "总循环次数",
-        "F6",
-        "F7",
-        "F8",
-        "简洁模式",
-        "另存为",
-        "方案下拉",
-        "打开方案目录",
-        "保存 / 不保存 / 取消",
-        "导入方案",
-        "导出方案",
-        "导入为副本",
-        "云桌面增强",
-        "计划点击数",
-        "断点继续",
-        "重新采点",
-        "屏幕缩放",
-        "多显示器",
-    ]
-    missing_terms = [term for term in prd_terms if term not in prd_text]
-    if missing_terms:
-        fail(f"PRD 缺少关键内容: {', '.join(missing_terms)}")
-    for term in ("有序连点器-视频演示.mp4", "下次直接加载"):
-        if term in prd_text:
-            fail(f"HTML 含非交付或过时内容: {term}")
-    verify_local_links(prd_html)
-    verify_local_links(required["演示靶场"][0])
-
-    pdf_reader = PdfReader(str(required["使用说明 PDF"][0]))
-    if len(pdf_reader.pages) < 15:
-        fail(f"PDF 页数不足: {len(pdf_reader.pages)}")
-    pdf_text = "\n".join(page.extract_text() or "" for page in pdf_reader.pages)
-    for term in (
-        "ordered-clicker-portable-v1.3.1.zip",
-        "有序连点器-视频演示.mp4",
-        "SHA256SUMS.txt",
-    ):
-        if term in pdf_text:
-            fail(f"PDF 含非交付文件: {term}")
-    for term in (
-        "采点模式",
-        "点击次数",
-        "应用全部",
-        "新采集点",
-        "F6",
-        "F7",
-        "F8",
-        "简洁模式",
-        "另存为",
-        "方案下拉",
-        "打开方案目录",
-        "保存 / 不保存 / 取消",
-        "导入方案",
-        "导出方案",
-        "云桌面",
-        "计划点击",
-        "断点",
-        "重新采点",
-    ):
-        if term not in pdf_text:
-            fail(f"PDF 缺少关键内容: {term}")
-
-    subtitle_count, subtitle_end = verify_srt(required["字幕"][0])
-    if subtitle_count < 80:
-        fail(f"字幕条目过少: {subtitle_count}")
-    if subtitle_end > 600.1:
-        fail(f"字幕超过视频总时长: {subtitle_end:.3f}s")
-
-    for folder, pattern, expected in (
-        (ASSETS_DIR / "audio", "chapter-*.mp3", 14),
-        (ASSETS_DIR / "audio", "chapter-*.wav", 14),
-        (ASSETS_DIR / "clips", "chapter-*.mp4", 14),
-        (ASSETS_DIR / "scenes", "scene-*.png", 14),
-    ):
-        actual = len(list(folder.glob(pattern)))
-        if actual != expected:
-            fail(f"{folder.name}/{pattern} 数量错误: {actual}, 预期 {expected}")
-
-    if skip_video:
-        duration = None
-        media = None
-        mean_volume = None
-    else:
-        duration, media, mean_volume = verify_video(required["完整视频"][0])
-
-    print("操作指导交付校验通过")
-    print(f"- 必需交付文件: {len(required)} 项")
-    print(f"- PDF: {len(pdf_reader.pages)} 页")
-    print(f"- 字幕: {subtitle_count} 条，结束于 {subtitle_end:.3f}s")
-    if skip_video:
-        print("- 视频: 文件存在，本次未重复执行媒体解码校验")
-    else:
-        print(f"- 视频: {duration:.2f}s，{media}，平均响度 {mean_volume:.1f} dB")
-    print("- 章节素材: 14 张场景图、14 段语音、14 个视频片段")
+    print("2.0.0 使用说明校验通过")
+    print(f"- HTML: {HTML_PATH.stat().st_size} bytes，自包含截图")
+    print(f"- PDF: {len(reader.pages)} 页，{PDF_PATH.stat().st_size} bytes")
     return 0
 
 
@@ -295,11 +83,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--skip-video",
         action="store_true",
-        help="跳过未修改视频的 FFmpeg 解码和响度检查",
+        help="兼容旧命令；2.0.0 交付不包含视频。",
     )
-    arguments = parser.parse_args()
+    parser.parse_args()
     try:
-        raise SystemExit(main(skip_video=arguments.skip_video))
+        raise SystemExit(main())
     except AssertionError as error:
         print(f"校验失败: {error}", file=sys.stderr)
         raise SystemExit(1)

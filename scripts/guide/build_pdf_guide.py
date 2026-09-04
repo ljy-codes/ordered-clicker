@@ -1,22 +1,19 @@
 from __future__ import annotations
 
-from html import escape
 from pathlib import Path
 
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
-    BaseDocTemplate,
-    Frame,
     Image,
     PageBreak,
-    PageTemplate,
     Paragraph,
+    SimpleDocTemplate,
     Spacer,
     Table,
     TableStyle,
@@ -24,24 +21,21 @@ from reportlab.platypus import (
 
 
 ROOT = Path(__file__).resolve().parents[2]
-GUIDE_DIR = ROOT / "操作指导"
-SCREENSHOT_DIR = GUIDE_DIR / "assets" / "screenshots"
-OUTPUT_PDF = GUIDE_DIR / "有序连点器-使用说明.pdf"
+ARTIFACTS = ROOT / "artifacts"
+OUTPUT = ROOT / "操作指导" / "有序连点器-使用说明.pdf"
 
-PAGE_BG = colors.HexColor("#0f131a")
-SURFACE = colors.HexColor("#171d27")
-SURFACE_ALT = colors.HexColor("#202838")
-TEXT = colors.HexColor("#eef4ff")
-MUTED = colors.HexColor("#a9b6c9")
-PRIMARY = colors.HexColor("#4d86ff")
-CYAN = colors.HexColor("#19c7d9")
-GREEN = colors.HexColor("#24d6a3")
-AMBER = colors.HexColor("#f3b842")
-RED = colors.HexColor("#ff5b6e")
-BORDER = colors.HexColor("#344158")
+BLUE = colors.HexColor("#2968D8")
+CYAN = colors.HexColor("#087D8D")
+GREEN = colors.HexColor("#087A5B")
+AMBER = colors.HexColor("#A86800")
+RED = colors.HexColor("#B42336")
+TEXT = colors.HexColor("#182230")
+MUTED = colors.HexColor("#58677A")
+SURFACE = colors.HexColor("#F3F6FA")
+LINE = colors.HexColor("#CCD5E0")
 
 
-def register_fonts() -> None:
+def register_font() -> None:
     font_path = Path("C:/Windows/Fonts/simhei.ttf")
     if not font_path.is_file():
         raise FileNotFoundError(f"未找到中文字体: {font_path}")
@@ -49,93 +43,71 @@ def register_fonts() -> None:
 
 
 def styles() -> dict[str, ParagraphStyle]:
+    base = getSampleStyleSheet()
     return {
-        "cover_title": ParagraphStyle(
-            "CoverTitle",
+        "title": ParagraphStyle(
+            "TitleCN",
+            parent=base["Title"],
             fontName="GuideCN",
             fontSize=28,
-            leading=36,
-            textColor=TEXT,
-            alignment=TA_LEFT,
-            spaceAfter=8,
-        ),
-        "cover_subtitle": ParagraphStyle(
-            "CoverSubtitle",
-            fontName="GuideCN",
-            fontSize=12,
-            leading=20,
-            textColor=MUTED,
-            alignment=TA_LEFT,
-            spaceAfter=16,
-        ),
-        "section": ParagraphStyle(
-            "Section",
-            fontName="GuideCN",
-            fontSize=20,
-            leading=28,
+            leading=38,
             textColor=TEXT,
             spaceAfter=8,
         ),
-        "section_intro": ParagraphStyle(
-            "SectionIntro",
+        "subtitle": ParagraphStyle(
+            "SubtitleCN",
             fontName="GuideCN",
-            fontSize=10,
-            leading=17,
+            fontSize=11,
+            leading=19,
             textColor=MUTED,
             spaceAfter=14,
         ),
+        "section": ParagraphStyle(
+            "SectionCN",
+            fontName="GuideCN",
+            fontSize=21,
+            leading=29,
+            textColor=TEXT,
+            spaceAfter=10,
+        ),
         "heading": ParagraphStyle(
-            "Heading",
+            "HeadingCN",
             fontName="GuideCN",
             fontSize=13,
             leading=20,
             textColor=CYAN,
             spaceBefore=8,
-            spaceAfter=6,
+            spaceAfter=5,
         ),
         "body": ParagraphStyle(
-            "Body",
+            "BodyCN",
             fontName="GuideCN",
             fontSize=9.5,
             leading=16,
             textColor=TEXT,
-            spaceAfter=6,
+            spaceAfter=7,
+        ),
+        "bullet": ParagraphStyle(
+            "BulletCN",
+            fontName="GuideCN",
+            fontSize=9.3,
+            leading=15.5,
+            textColor=TEXT,
+            leftIndent=13,
+            firstLineIndent=-9,
+            spaceAfter=5,
         ),
         "small": ParagraphStyle(
-            "Small",
+            "SmallCN",
             fontName="GuideCN",
-            fontSize=8.2,
+            fontSize=8,
             leading=13,
             textColor=MUTED,
         ),
-        "bullet": ParagraphStyle(
-            "Bullet",
-            fontName="GuideCN",
-            fontSize=9.2,
-            leading=15,
-            textColor=TEXT,
-            leftIndent=12,
-            firstLineIndent=-8,
-            bulletIndent=2,
-            spaceAfter=4,
-        ),
-        "callout": ParagraphStyle(
-            "Callout",
-            fontName="GuideCN",
-            fontSize=9.4,
-            leading=16,
-            textColor=TEXT,
-            borderColor=BORDER,
-            borderWidth=0.8,
-            borderPadding=9,
-            backColor=SURFACE_ALT,
-            spaceBefore=8,
-            spaceAfter=8,
-        ),
         "center": ParagraphStyle(
-            "Center",
+            "CenterCN",
             fontName="GuideCN",
-            fontSize=10,
+            fontSize=9.5,
             leading=16,
             textColor=TEXT,
             alignment=TA_CENTER,
@@ -143,676 +115,380 @@ def styles() -> dict[str, ParagraphStyle]:
     }
 
 
-def paragraph(text: str, style: ParagraphStyle) -> Paragraph:
-    return Paragraph(escape(text).replace("\n", "<br/>"), style)
+def p(text: str, style: ParagraphStyle) -> Paragraph:
+    return Paragraph(text.replace("\n", "<br/>"), style)
 
 
-def rich(text: str, style: ParagraphStyle) -> Paragraph:
-    return Paragraph(text, style)
+def bullets(items: list[str], style: ParagraphStyle) -> list[Paragraph]:
+    return [p(f"- {item}", style) for item in items]
 
 
-def section_header(
-    story: list,
-    number: str,
-    title: str,
-    intro: str,
-    style_map: dict[str, ParagraphStyle],
-) -> None:
-    story.append(
-        rich(
-            f'<font color="#19c7d9">{number}</font>&nbsp;&nbsp;{escape(title)}',
-            style_map["section"],
-        )
-    )
-    story.append(paragraph(intro, style_map["section_intro"]))
-
-
-def heading(story: list, text: str, style_map: dict[str, ParagraphStyle]) -> None:
-    story.append(paragraph(text, style_map["heading"]))
-
-
-def bullets(
-    story: list,
-    items: list[str],
-    style_map: dict[str, ParagraphStyle],
-) -> None:
-    for item in items:
-        story.append(rich(f'<font color="#24d6a3">●</font> {escape(item)}', style_map["bullet"]))
-
-
-def callout(
-    story: list,
-    label: str,
-    text: str,
-    style_map: dict[str, ParagraphStyle],
-    color: str = "#f3b842",
-) -> None:
-    story.append(
-        rich(
-            f'<font color="{color}">{escape(label)}</font> {escape(text)}',
-            style_map["callout"],
-        )
-    )
-
-
-def guide_table(
-    rows: list[list[str]],
-    widths: list[float],
-    style_map: dict[str, ParagraphStyle],
-) -> Table:
-    data = [
-        [rich(f"<b>{escape(cell)}</b>", style_map["small"]) for cell in rows[0]]
-    ]
-    for row in rows[1:]:
-        data.append([paragraph(cell, style_map["small"]) for cell in row])
-
-    table = Table(data, colWidths=widths, repeatRows=1, hAlign="LEFT")
-    table.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, 0), SURFACE_ALT),
-                ("BACKGROUND", (0, 1), (-1, -1), SURFACE),
-                ("TEXTCOLOR", (0, 0), (-1, -1), TEXT),
-                ("GRID", (0, 0), (-1, -1), 0.5, BORDER),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 7),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 7),
-                ("TOPPADDING", (0, 0), (-1, -1), 6),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-            ]
-        )
-    )
-    return table
-
-
-def screenshot(path: Path, width: float, max_height: float) -> Image:
+def screenshot(name: str, width: float) -> Image:
+    path = ARTIFACTS / name
+    if not path.is_file():
+        raise FileNotFoundError(f"缺少界面截图: {path}")
     image = Image(str(path))
-    ratio = min(width / image.imageWidth, max_height / image.imageHeight)
-    image.drawWidth = image.imageWidth * ratio
+    ratio = width / image.imageWidth
+    image.drawWidth = width
     image.drawHeight = image.imageHeight * ratio
     image.hAlign = "CENTER"
     return image
 
 
-def draw_page(canvas, doc) -> None:
-    width, height = A4
+def table(rows: list[list[str]], widths: list[float], style_map) -> Table:
+    data = [
+        [p(cell, style_map["small"] if row_index else style_map["center"])
+         for cell in row]
+        for row_index, row in enumerate(rows)
+    ]
+    result = Table(data, colWidths=widths, repeatRows=1, hAlign="LEFT")
+    result.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), SURFACE),
+                ("TEXTCOLOR", (0, 0), (-1, 0), CYAN),
+                ("GRID", (0, 0), (-1, -1), 0.6, LINE),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 7),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+                ("TOPPADDING", (0, 0), (-1, -1), 7),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+            ]
+        )
+    )
+    return result
+
+
+def callout(text: str, style_map, color=AMBER) -> Table:
+    result = Table([[p(text, style_map["body"])]], colWidths=[172 * mm])
+    result.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), SURFACE),
+                ("BOX", (0, 0), (-1, -1), 0.8, LINE),
+                ("LINEBEFORE", (0, 0), (0, -1), 4, color),
+                ("LEFTPADDING", (0, 0), (-1, -1), 12),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                ("TOPPADDING", (0, 0), (-1, -1), 9),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 9),
+            ]
+        )
+    )
+    return result
+
+
+def page_header_footer(canvas, doc) -> None:
     canvas.saveState()
-    canvas.setFillColor(PAGE_BG)
-    canvas.rect(0, 0, width, height, stroke=0, fill=1)
-    canvas.setStrokeColor(BORDER)
-    canvas.line(18 * mm, 15 * mm, width - 18 * mm, 15 * mm)
+    width, height = A4
+    canvas.setStrokeColor(LINE)
+    canvas.line(18 * mm, height - 13 * mm, width - 18 * mm, height - 13 * mm)
+    canvas.line(18 * mm, 14 * mm, width - 18 * mm, 14 * mm)
     canvas.setFont("GuideCN", 7.5)
     canvas.setFillColor(MUTED)
-    canvas.drawString(18 * mm, 9.5 * mm, "有序连点器 1.3.1 · 零基础使用说明")
-    canvas.drawRightString(width - 18 * mm, 9.5 * mm, f"第 {doc.page} 页")
+    canvas.drawString(18 * mm, height - 10 * mm, "有序连点器 2.0.0 使用说明")
+    canvas.drawRightString(width - 18 * mm, 9 * mm, f"第 {doc.page} 页")
     canvas.restoreState()
 
 
-def build_story(style_map: dict[str, ParagraphStyle]) -> list:
+def build_story(style_map) -> list:
     story: list = []
 
-    story.append(Spacer(1, 13 * mm))
-    story.append(rich('<font color="#19c7d9">ORDERED CLICKER</font>', style_map["heading"]))
-    story.append(paragraph("有序连点器", style_map["cover_title"]))
-    story.append(
-        paragraph(
-            "Windows 10/11 x64 免费开源工具 · 无授权码 · 无联网验证",
-            style_map["cover_subtitle"],
-        )
-    )
-    story.append(
-        screenshot(
-            SCREENSHOT_DIR / "主界面-极光科技.png",
-            170 * mm,
-            102 * mm,
-        )
-    )
-    story.append(Spacer(1, 7 * mm))
-    story.append(
-        guide_table(
+    story += [
+        Spacer(1, 12 * mm),
+        p("有序连点器 2.0.0", style_map["title"]),
+        p(
+            "Windows 10/11 x64 · 五步式工作台 · v4 .oclick 方案 · "
+            "草稿恢复 · 可靠断点 · 双重停止保护",
+            style_map["subtitle"],
+        ),
+        screenshot("ordered-clicker-ui-v2.0.0.png", 172 * mm),
+        Spacer(1, 7 * mm),
+        table(
             [
-                ["适用用户", "核心能力", "文档版本"],
-                ["零基础普通用户", "云桌面、多点长流程、断点继续、循环执行", "1.3.1 · 2026-07-23"],
+                ["适用用户", "核心能力", "文档日期"],
+                ["普通桌面和云桌面用户", "有序点位、循环、稳定检测、暂停继续和日志", "2026-09-04"],
             ],
-            [42 * mm, 88 * mm, 42 * mm],
+            [48 * mm, 82 * mm, 42 * mm],
             style_map,
-        )
-    )
-    callout(
-        story,
-        "安全提醒：",
-        "自动点击会真实控制鼠标。首次使用只设置 1 轮，并在安全空白页面测试；任何时候按 F8 停止。",
-        style_map,
-        "#ff5b6e",
-    )
+        ),
+        Spacer(1, 7 * mm),
+        callout(
+            "安全提醒：程序会真实移动并点击鼠标。首次使用只设置 1 轮，"
+            "在没有支付、删除或提交风险的页面测试。任何时候可按 F8 或触发安全角停止。",
+            style_map,
+            RED,
+        ),
+        PageBreak(),
+    ]
 
-    story.append(PageBreak())
-    section_header(story, "00", "一分钟操作流程", "先掌握完整流程，再进入逐项说明。", style_map)
-    story.append(
-        guide_table(
+    story += [
+        p("01 一分钟操作流程", style_map["section"]),
+        table(
             [
-                ["步骤", "操作", "结果"],
-                ["1", "打开采点模式，将鼠标移到目标位置后按 F6。", "按采集顺序新增点位。"],
-                ["2", "在“点位时间”栏填写时间，并点击对应“应用全部”。", "所有点统一获得该列时间。"],
-                ["3", "直接修改特殊点位所在行。", "该行成为例外，不影响其他点。"],
-                ["4", "设置总循环次数和轮间等待。", "整组点位按顺序重复执行。"],
-                ["5", "核对计划点次和计划点击数，按 F7 开始；按 F8 停止。", "防止长流程提前结束。"],
-                ["6", "确认无误后保存、另存为或导出方案。", "下次可导入方案副本复用。"],
+                ["步骤", "操作", "完成标志"],
+                ["1 模式", "普通桌面直接使用；云桌面先启用增强模式。", "坐标方式明确"],
+                ["2 方案", "新建或打开 .oclick，设置循环和轮间等待。", "方案参数完整"],
+                ["3 采点", "按 F6 或使用“2 秒后记录”，按顺序添加点位。", "点位顺序正确"],
+                ["4 检查", "核对点击数、预计耗时、显示器和安全停止。", "计划已确认"],
+                ["5 运行", "倒计时后开始；F7 暂停/继续，F8 停止。", "完成数等于计划数"],
             ],
-            [16 * mm, 100 * mm, 56 * mm],
+            [25 * mm, 99 * mm, 48 * mm],
             style_map,
-        )
-    )
-    heading(story, "三个必须记住的快捷键", style_map)
-    story.append(
-        guide_table(
+        ),
+        Spacer(1, 10 * mm),
+        p("默认快捷键", style_map["heading"]),
+        table(
             [
-                ["快捷键", "作用", "什么时候用"],
-                ["F6", "采集当前鼠标位置", "采点或云桌面区域校准时"],
-                ["F7", "开始、暂停、继续", "配置完成后或运行过程中"],
-                ["F8", "立即停止", "发现误点风险或窗口变化时"],
+                ["快捷键", "作用", "使用时机"],
+                ["F6", "记录当前位置", "采点或云桌面校准"],
+                ["F7", "开始、暂停、继续", "计划确认后或执行中"],
+                ["F8", "停止", "发现误点风险或窗口变化"],
             ],
-            [26 * mm, 58 * mm, 88 * mm],
+            [28 * mm, 55 * mm, 89 * mm],
             style_map,
-        )
-    )
+        ),
+        Spacer(1, 10 * mm),
+        callout(
+            "开始前必须同时具备停止快捷键和已启用的安全角。"
+            "点位落入安全角时，程序会拒绝执行。",
+            style_map,
+        ),
+        PageBreak(),
+    ]
 
-    story.append(PageBreak())
-    section_header(story, "01", "产品概览", "一个方案就是一张可保存、可重复执行的点击清单。", style_map)
-    bullets(
-        story,
-        [
-            "可按顺序采集多个屏幕点位，并通过上移、下移调整执行顺序。",
-            "每个点可以独立设置点击次数、点击间隔和点后等待。",
-            "点击间隔和点后等待支持分别批量应用到全部点位。",
-            "批量设置后仍可修改单行，形成只对该点生效的例外。",
-            "新采集点自动继承当前全局点击间隔和点后等待。",
-            "全部启用点执行完一遍算一轮，可设置总循环次数和轮间等待。",
-            "支持五套主题、方案保存、DPI 缩放与多显示器环境检查。",
-            "支持浏览器云桌面区域校准、相对坐标、画面稳定等待和断点继续。",
-        ],
-        style_map,
-    )
-    callout(story, "免费说明：", "公开版本不需要授权码，不要求首次联网，也没有设备数量限制。", style_map, "#24d6a3")
-
-    story.append(PageBreak())
-    section_header(story, "02", "使用前准备", "采点前先固定窗口和显示环境，减少坐标失效风险。", style_map)
-    heading(story, "系统与权限", style_map)
-    bullets(
-        story,
-        [
-            "使用 Windows 10 或 Windows 11 x64。",
-            "普通权限的连点器不能可靠控制以管理员身份运行的目标程序。",
-            "如目标程序以管理员身份运行，请关闭连点器后也以管理员身份启动。",
-            "默认使用 F6、F7、F8；设置中可切换兼容模式或直接自定义。",
-        ],
-        style_map,
-    )
-    heading(story, "显示与窗口", style_map)
-    bullets(
-        story,
-        [
-            "采点前固定目标窗口的位置、大小和页面内容。",
-            "确认显示器分辨率、排列、主副屏关系和缩放比例不再变化。",
-            "执行期间避免通知、弹窗或其他窗口遮挡目标位置。",
-            "首次只在安全空白页面或可撤销场景测试。",
-        ],
-        style_map,
-    )
-
-    story.append(PageBreak())
-    section_header(story, "03", "界面认识", "主界面按方案、时间、点位、操作和执行分区。", style_map)
-    story.append(
-        screenshot(
-            SCREENSHOT_DIR / "主界面-极光科技.png",
-            172 * mm,
-            98 * mm,
-        )
-    )
-    story.append(Spacer(1, 5 * mm))
-    story.append(
-        guide_table(
+    story += [
+        p("02 方案、迁移与草稿", style_map["section"]),
+        p("v4 .oclick 方案", style_map["heading"]),
+        *bullets(
             [
-                ["区域", "作用"],
-                ["方案区", "设置方案名称、总循环次数和轮间等待，并保存、另存为、导入或导出。"],
-                ["云桌面区", "校准远程画面区域，并设置是否等待画面稳定。"],
-                ["点位时间", "设置全局点击间隔、点后等待，并通过“应用全部”批量更新。"],
-                ["点位表", "查看启用状态、顺序、坐标、点击次数、时间和显示器。"],
-                ["点位操作栏", "采点、上移、下移、删除、清空、设置和使用说明。"],
-                ["执行区", "开始、暂停、继续和停止，并查看运行状态。"],
+                "“保存”覆盖当前绑定文件；“另存为”创建新的方案身份。",
+                "“打开方案”用于任意位置的 v4 .oclick 文件。",
+                "默认方案目录只列出 .oclick 文件，避免把旧 JSON 当作当前方案直接编辑。",
             ],
-            [38 * mm, 134 * mm],
-            style_map,
-        )
-    )
-
-    story.append(PageBreak())
-    section_header(story, "04", "快速入门：采集点位", "以下示例采集三个点，并按蓝、青、紫的顺序执行。", style_map)
-    heading(story, "步骤 1：建立安全测试环境", style_map)
-    bullets(
-        story,
-        [
-            "打开连点器和一个安全的空白测试页面。",
-            "将总循环次数暂时设置为 1。",
-            "确认目标窗口不会自动移动或改变布局。",
-        ],
-        style_map,
-    )
-    heading(story, "步骤 2：进入采点模式", style_map)
-    bullets(
-        story,
-        [
-            "点击“采点模式 (F6)”，按钮会变成“结束采点”。",
-            "把鼠标移到第一个目标位置中心，按一次 F6。",
-            "依次移动到第二、第三个位置，每个位置按一次 F6。",
-            "点位按采集顺序出现在表格中。",
-        ],
-        style_map,
-    )
-    heading(story, "步骤 3：结束并检查", style_map)
-    bullets(
-        story,
-        [
-            "点击“结束采点”，防止后续误按 F6 添加多余点位。",
-            "检查表格是否有三行，以及坐标和显示器信息是否完整。",
-            "顺序错误时，选中一行后使用“上移”或“下移”。",
-        ],
-        style_map,
-    )
-
-    story.append(PageBreak())
-    section_header(story, "04", "快速入门：设置时间与执行", "先批量设置常用值，再为少数特殊点位单独修改。", style_map)
-    heading(story, "步骤 4：批量设置两列时间", style_map)
-    bullets(
-        story,
-        [
-            "在全局“点击间隔(ms)”输入 500，点击旁边的“应用全部”。",
-            "在全局“点后等待(ms)”输入 800，点击旁边的“应用全部”。",
-            "此时全部点位的点击间隔为 500，点后等待为 800。",
-        ],
-        style_map,
-    )
-    heading(story, "步骤 5：设置单点例外", style_map)
-    bullets(
-        story,
-        [
-            "蓝色点：点击次数改为 2，时间保持 500/800。",
-            "青色点：点击次数为 1，点后等待单独改为 600。",
-            "紫色点：点击次数改为 3，点击间隔改为 300，点后等待改为 1000。",
-            "单行修改不会反向改变全局输入框，也不会影响其他点。",
-        ],
-        style_map,
-    )
-    heading(story, "步骤 6：执行与核对", style_map)
-    bullets(
-        story,
-        [
-            "总循环次数先填 1，确认无误后可改为 2；轮间等待示例填 1500。",
-            "开始前核对启用行、禁用行、计划点次和计划点击数，再按 F7。",
-            "确认后有 3 秒倒计时；运行中按 F7 暂停或继续，按 F8 随时停止。",
-            "两轮结束后，三个点的总点击次数应分别为 4、2、6。",
-        ],
-        style_map,
-    )
-
-    story.append(PageBreak())
-    section_header(story, "05", "参数详细解释", "时间单位统一为毫秒，1000 毫秒等于 1 秒。", style_map)
-    story.append(
-        guide_table(
+            style_map["bullet"],
+        ),
+        p("旧 JSON 单向迁移", style_map["heading"]),
+        *bullets(
             [
-                ["参数", "作用", "建议"],
-                ["点击次数", "当前点位每轮连续点击多少次。", "从 1 开始测试。"],
-                ["点击间隔", "同一点位多次点击之间的等待。", "最小 10 ms，建议先用 500 ms。"],
-                ["点后等待", "当前点完成后，到下一个点开始前的等待。", "可设 0，建议先用 500-1000 ms。"],
-                ["总循环次数", "全部启用点执行完一遍算一轮。", "首次只设 1。"],
-                ["轮间等待", "一轮结束到下一轮开始的等待。", "页面刷新慢时适当增加。"],
-                ["启用", "取消勾选后跳过该点，但保留配置。", "用于临时测试部分流程。"],
+                "v1-v3 JSON 只能通过“迁移旧方案”读取。",
+                "迁移结果是未保存的新方案；来源文件不会被覆盖。",
+                "坐标或字段无法完整推断时会显示警告，保存前必须核对。",
             ],
-            [34 * mm, 90 * mm, 48 * mm],
-            style_map,
-        )
-    )
-    callout(
-        story,
-        "区别：",
-        "点后等待发生在相邻点位之间；轮间等待只发生在整轮之间，最后一轮结束后不再等待下一轮。",
-        style_map,
-    )
-
-    story.append(PageBreak())
-    section_header(story, "05", "全局时间与单点例外", "新版本的核心操作是“批量统一，再按行覆盖”。", style_map)
-    heading(story, "应用全部", style_map)
-    bullets(
-        story,
-        [
-            "点击间隔和点后等待各有独立的“应用全部”按钮。",
-            "点击哪个按钮，只批量修改对应的那一列。",
-            "例如点击间隔设为 1000 并应用全部，不会覆盖每个点的点后等待。",
-            "没有点位时也可以先设置全局值，随后采集的新点会继承这些值。",
-        ],
-        style_map,
-    )
-    heading(story, "单行覆盖", style_map)
-    bullets(
-        story,
-        [
-            "批量设置后，直接点击表格中的某个时间单元格输入例外值。",
-            "例如全部点击间隔为 1000，再把第二行改为 200，只有第二行使用 200。",
-            "单行覆盖不会修改全局默认值；之后采集的新点仍继承全局值。",
-        ],
-        style_map,
-    )
-    callout(
-        story,
-        "推荐顺序：",
-        "先设置全局时间，再采点；采点完成后批量确认一次，最后只修改少量特殊点。",
-        style_map,
-        "#24d6a3",
-    )
-
-    story.append(PageBreak())
-    section_header(story, "06", "开始、暂停与停止", "快捷键为全局热键，连点器不在前台时也可以使用。", style_map)
-    story.append(
-        guide_table(
+            style_map["bullet"],
+        ),
+        p("切换和关闭保护", style_map["heading"]),
+        *bullets(
             [
-                ["状态", "操作", "程序行为"],
-                ["空闲", "按 F7 或点击开始", "先确认执行计划，再进入 3 秒倒计时。"],
-                ["运行中", "按 F7", "暂停当前等待或点位流程。"],
-                ["已暂停", "再次按 F7", "从暂停位置继续。"],
-                ["任意执行状态", "按 F8", "停止并保留可继续的断点。"],
+                "有未保存修改时切换方案，会出现“保存 / 不保存 / 取消”。",
+                "程序自动保存活动草稿；异常退出后下次启动可以恢复。",
+                "正常关闭且没有未保存修改时清理活动草稿。",
             ],
-            [34 * mm, 52 * mm, 86 * mm],
+            style_map["bullet"],
+        ),
+        callout(
+            "损坏的设置文件不会静默覆盖。程序会把原文件重命名为带时间戳的 "
+            ".broken.json，再恢复默认设置。",
             style_map,
-        )
-    )
-    callout(
-        story,
-        "立即停止：",
-        "发现目标窗口移动、弹窗遮挡、页面内容变化或误点风险时，优先按 F8。",
-        style_map,
-        "#ff5b6e",
-    )
+            BLUE,
+        ),
+        PageBreak(),
+    ]
 
-    story.append(PageBreak())
-    section_header(story, "07", "保存、另存为、导入与导出", "方案文件保存点位、单点参数、云桌面区域和全局时间默认值。", style_map)
-    heading(story, "保存内容", style_map)
-    bullets(
-        story,
-        [
-            "方案名称、总循环次数和轮间等待。",
-            "每个点的启用状态、顺序、坐标、点击次数、点击间隔和点后等待。",
-            "全局点击间隔和全局点后等待默认值。",
-            "采点时的显示器信息，用于开始前检测环境变化。",
-            "云桌面区域、相对坐标和画面稳定等待设置。",
-        ],
-        style_map,
-    )
-    heading(story, "四种文件操作", style_map)
-    bullets(
-        story,
-        [
-            "保存：覆盖当前已绑定的方案；没有绑定路径时保存到程序默认方案目录。",
-            "另存为：选择新的 JSON 路径，并将其设为后续“保存”的目标。",
-            "导入方案：校验文件并显示摘要，确认后作为本机副本；首次保存会要求另存为，不会覆盖来源文件。",
-            "导出方案：生成备份或分享文件，不改变当前方案的保存位置。",
-            "导入失败或取消时，当前点位和设置保持不变。",
-        ],
-        style_map,
-    )
-    heading(story, "方案下拉与默认目录", style_map)
-    bullets(
-        story,
-        [
-            "方案下拉：点击“方案名称”右侧箭头，只列出程序默认方案目录中的 JSON 文件；输入框仍可直接填写新名称。",
-            "打开方案目录：点击下拉框右侧的文件夹按钮，打开 %LocalAppData%\\OrderedClicker\\profiles。",
-            "当前方案有修改时，切换会出现“保存 / 不保存 / 取消”：保存后切换、不保存直接切换、取消留在当前方案。",
-            "默认目录以外的 JSON 文件继续使用“导入方案”，并按副本处理。",
-        ],
-        style_map,
-    )
-    heading(story, "导入后的检查", style_map)
-    bullets(
-        story,
-        [
-            "先确认点位数量、顺序、启用状态和时间参数。",
-            "显示器环境没有变化时，仍建议先执行一轮测试。",
-            "显示器排列、分辨率、缩放或目标窗口变化后，应重新校准云桌面区域或重新采点。",
-            "不要手工删除 JSON 字段或加入注释，以免文件损坏。",
-        ],
-        style_map,
-    )
-
-    story.append(PageBreak())
-    section_header(story, "08", "主题与快捷键设置", "设置会保存到本机，下次启动自动恢复。", style_map)
-    story.append(
-        screenshot(
-            SCREENSHOT_DIR / "主题设置.png",
-            118 * mm,
-            100 * mm,
-        )
-    )
-    story.append(Spacer(1, 4 * mm))
-    bullets(
-        story,
-        [
-            "内置主题：极光科技、经典深色、海洋蓝、翡翠绿、明亮模式。",
-            "点击主题卡片立即预览；点击保存后下次启动自动恢复。",
-            "快捷键输入框获得焦点后，直接按下新的组合键即可记录。",
-            "无修饰键只允许 F6 到 F12；组合键可使用 Ctrl、Alt、Shift 或 Win。",
-            "“简洁模式”使用 F6/F7/F8；“兼容模式”使用 Ctrl+Alt+F8/F9/F10。",
-            "保存时若新快捷键被占用，程序会提示冲突并恢复修改前仍可用的快捷键。",
-            "点击取消、关闭弹窗或按 Esc，会撤销本次未保存的主题和快捷键修改。",
-            "主界面的“? 使用说明”可随时打开内置帮助。",
-        ],
-        style_map,
-    )
-    story.append(Spacer(1, 4 * mm))
-    story.append(
-        screenshot(
-            SCREENSHOT_DIR / "使用说明.png",
-            112 * mm,
-            76 * mm,
-        )
-    )
-
-    story.append(PageBreak())
-    section_header(story, "09", "云桌面增强与复杂流程", "浏览器内远程桌面建议使用区域相对坐标和画面稳定等待。", style_map)
-    heading(story, "两点校准", style_map)
-    bullets(
-        story,
-        [
-            "勾选“云桌面增强”，点击“校准云桌面区域”。",
-            "将鼠标移到远程画面的左上角按 F6，再移到右下角按 F6。",
-            "校准完成后再采点，点位会保存为区域内相对坐标。",
-            "浏览器窗口移动或改变大小后，只需重新校准区域，不必重新采集全部点位。",
-        ],
-        style_map,
-    )
-    heading(story, "画面稳定等待", style_map)
-    bullets(
-        story,
-        [
-            "勾选“等待画面稳定”，超时可设置为 3 到 60 秒。",
-            "远程页面持续变化并超过超时时间时，程序会自动暂停。",
-            "确认页面可操作后按 F7 继续，或按 F8 停止。",
-        ],
-        style_map,
-    )
-    heading(story, "长流程完整性", style_map)
-    bullets(
-        story,
-        [
-            "开始前确认总行数、启用行、禁用行、循环数、计划点次和计划点击数。",
-            "只有实际完成数与计划完全一致，程序才显示全部完成。",
-            "停止或异常后可从精确断点继续，也可点击“重新开始”。",
-            "执行日志保存在 %LocalAppData%\\OrderedClicker\\logs。",
-        ],
-        style_map,
-    )
-
-    story.append(PageBreak())
-    section_header(story, "10", "DPI、屏幕缩放与多显示器", "普通模式使用物理屏幕坐标，云桌面模式使用已校准区域内的相对坐标。", style_map)
-    heading(story, "支持的情况", style_map)
-    bullets(
-        story,
-        [
-            "支持 100%、125%、150% 等 Windows 屏幕缩放比例。",
-            "支持副屏位于主屏左侧或上方，因此坐标可能为负数。",
-            "记录采点时显示器的位置、分辨率和缩放信息。",
-        ],
-        style_map,
-    )
-    heading(story, "必须重新采点的变化", style_map)
-    bullets(
-        story,
-        [
-            "改变显示器分辨率、缩放比例、排列位置或主显示器。",
-            "拔插显示器、切换远程桌面或改变目标程序窗口位置和大小。",
-            "目标程序升级后按钮位置发生变化。",
-        ],
-        style_map,
-    )
-    callout(
-        story,
-        "为什么不自动换算：",
-        "普通模式的绝对坐标不会静默缩放；云桌面模式在重新校准区域后按比例恢复点位。",
-        style_map,
-    )
-
-    story.append(PageBreak())
-    section_header(story, "11", "常见问题", "出现问题时先停止任务，再按现象逐项排查。", style_map)
-    story.append(
-        guide_table(
+    story += [
+        p("03 采点与步骤时间", style_map["section"]),
+        *bullets(
             [
-                ["现象", "处理方法"],
-                ["默认快捷键无反应", "进入设置切换兼容模式或自定义；按钮始终可用。"],
-                ["快捷键无法保存", "无修饰键只允许 F6-F12，并确保三个操作不重复。"],
-                ["点击位置偏移", "云桌面先重新校准区域；普通模式检查窗口、缩放和显示器排列。"],
-                ["步骤多时提前结束", "开始前核对启用行和计划点击数；未匹配时不会显示完成，可从断点继续。"],
-                ["无法点击管理员程序", "让连点器与目标程序使用相同权限。"],
-                ["时间输入后恢复", "点击间隔至少 10 ms；输入后点击其他单元格完成编辑。"],
-                ["应用全部后特殊值消失", "这是正常批量覆盖；请在批量应用后再设置单行例外。"],
-                ["新点时间不符合预期", "检查“点位时间”栏；新采集点继承当前全局值。"],
-                ["导入方案失败", "选择软件保存或导出的 JSON 文件，不要手工破坏格式。"],
-                ["安全软件不响应", "不要绕过安全限制，改用目标程序允许的方式。"],
+                "进入采点模式后，将鼠标移到目标位置按 F6。",
+                "无法方便使用全局热键时，点击“2 秒后记录”，利用倒计时切回目标窗口。",
+                "新点与已有点距离小于等于 5 像素时，程序会询问是否仍要添加。",
+                "新增、删除和清空后可撤销，最多保留最近 10 次历史。",
+                "使用上移、下移调整实际执行顺序；禁用点位保留在方案中但不执行。",
             ],
-            [53 * mm, 119 * mm],
-            style_map,
-        )
-    )
-
-    story.append(PageBreak())
-    section_header(story, "12", "安全建议", "自动点击只适合可逆、低风险、位置固定的重复操作。", style_map)
-    callout(
-        story,
-        "禁止场景：",
-        "不要用于支付、转账、删除数据、不可撤销提交、自动发布内容或其他需要人工确认的高风险操作。",
-        style_map,
-        "#ff5b6e",
-    )
-    bullets(
-        story,
-        [
-            "正式使用前先执行一轮，核对坐标、顺序、次数和等待时间。",
-            "执行期间不要主动移动鼠标，不要拖动目标窗口。",
-            "始终确保 F8 或自定义停止键可用，并定期观察目标页面状态。",
-            "页面出现弹窗、加载异常或内容变化时立即停止。",
-            "环境发生变化后重新采点，不继续依赖旧坐标。",
-        ],
-        style_map,
-    )
-
-    story.append(PageBreak())
-    section_header(story, "13", "执行检查清单", "每次正式运行前后，用这一页快速核对。", style_map)
-    heading(story, "执行前", style_map)
-    bullets(
-        story,
-        [
-            "目标窗口的位置、大小和内容没有变化。",
-            "显示器分辨率、排列和缩放比例没有变化。",
-            "点位启用状态和执行顺序正确。",
-            "已先应用全局时间，再确认单行例外。",
-            "点击次数、点击间隔、点后等待和循环次数已核对。",
-            "首次或环境变化后只运行一轮。",
-            "确认 F8 或自定义停止键可以立即停止。",
-            "确认启用行数、计划点次和计划点击数符合预期。",
-        ],
-        style_map,
-    )
-    heading(story, "执行后", style_map)
-    bullets(
-        story,
-        [
-            "状态栏显示任务完成或已经停止。",
-            "目标结果与预期点击次数一致。",
-            "没有多余点击、漏点或被弹窗遮挡。",
-            "需要复用时保存当前方案。",
-        ],
-        style_map,
-    )
-    callout(
-        story,
-        "完成标准：",
-        "示例执行两轮后，三个点总点击次数应为 4、2、6；结果一致说明顺序、次数和循环配置正确。",
-        style_map,
-        "#24d6a3",
-    )
-
-    story.append(PageBreak())
-    section_header(story, "附录", "交付文件与版本信息", "本页用于确认你拿到的是完整公开版本。", style_map)
-    story.append(
-        guide_table(
+            style_map["bullet"],
+        ),
+        Spacer(1, 6 * mm),
+        table(
             [
-                ["文件", "用途"],
-                ["ordered-clicker-setup-v1.3.1.exe", "Windows 安装版。"],
-                ["有序连点器-使用说明.pdf", "当前离线说明书。"],
-                ["有序连点器-使用说明.html", "可搜索、可放大图片的网页说明。"],
+                ["参数", "含义", "常见误区"],
+                ["点击次数", "当前点位连续点击多少次。", "不是整个方案的循环次数"],
+                ["同点连击间隔", "同一位置多次点击之间的等待。", "只在点击次数大于 1 时发生"],
+                ["步骤完成后等待", "当前点全部点击后，到下一点前的等待。", "不是每次连击后的等待"],
+                ["轮间等待", "整轮结束后，到下一轮开始前的等待。", "最后一轮结束后不再等待"],
             ],
-            [76 * mm, 96 * mm],
+            [38 * mm, 75 * mm, 59 * mm],
             style_map,
-        )
-    )
-    callout(
-        story,
-        "版本说明：",
-        "1.3.1 新增明确的方案导入与导出流程；导入为副本且先校验确认，导出不改变当前保存位置，并保留另存为功能。",
-        style_map,
-        "#19c7d9",
-    )
+        ),
+        PageBreak(),
+    ]
 
+    story += [
+        p("04 检查、运行与安全角", style_map["section"]),
+        p("执行检查", style_map["heading"]),
+        *bullets(
+            [
+                "核对总行数、启用行、禁用行、循环数和计划点击数。",
+                "同时查看基础预计耗时和包含稳定检测超时的最大耗时。",
+                "确认后如修改点位、循环或时间，旧计划和断点自动失效。",
+            ],
+            style_map["bullet"],
+        ),
+        p("双重停止保护", style_map["heading"]),
+        *bullets(
+            [
+                "停止快捷键默认是 F8，可在设置中改为其他合法按键。",
+                "安全角可选择左上、右上、左下或右下，并设置范围和连续停留时间。",
+                "鼠标连续停留达到阈值后，倒计时、等待和点击都会走同一停止流程。",
+                "任何启用点位落在安全角内时，执行检查失败。",
+            ],
+            style_map["bullet"],
+        ),
+        screenshot("ordered-clicker-settings-v2.0.0.png", 126 * mm),
+        PageBreak(),
+    ]
+
+    story += [
+        p("05 暂停、停止与可靠断点", style_map["section"]),
+        *bullets(
+            [
+                "F7、主窗口和置顶状态小窗都可以暂停或继续。",
+                "暂停会冻结点击间隔、步骤等待、轮间等待和画面稳定检测。",
+                "停止后已完成的点击不会重复；未完成的等待和稳定检查会保守重做。",
+                "只有完成点次和点击数都与计划一致时，状态才显示全部完成。",
+                "运行页可以直接打开执行日志和诊断目录。",
+            ],
+            style_map["bullet"],
+        ),
+        Spacer(1, 8 * mm),
+        table(
+            [
+                ["断点阶段", "继续执行行为"],
+                ["移动前", "重新移动到当前点位"],
+                ["点击后", "从下一次尚未完成的点击继续"],
+                ["点击间隔中", "重新等待该间隔，不重复已完成点击"],
+                ["步骤等待或稳定检查中", "重新执行该等待或检查"],
+                ["轮间等待中", "重新等待后进入下一轮"],
+            ],
+            [62 * mm, 110 * mm],
+            style_map,
+        ),
+        PageBreak(),
+    ]
+
+    story += [
+        p("06 云桌面与画面稳定", style_map["section"]),
+        p("校准相对坐标", style_map["heading"]),
+        *bullets(
+            [
+                "启用云桌面增强后，先记录远程画面的左上角和右下角。",
+                "校准完成后再采点，点位保存为区域内相对坐标。",
+                "浏览器窗口移动或改变大小后重新校准；有效相对坐标保留，只补齐缺失值。",
+            ],
+            style_map["bullet"],
+        ),
+        p("等待画面稳定", style_map["heading"]),
+        *bullets(
+            [
+                "程序使用低分辨率 RGB 采样比较画面变化，减少长流程 CPU 和内存占用。",
+                "检测期间同样响应暂停和停止。",
+                "超过超时时间仍不稳定时自动暂停；确认页面可操作后按 F7 继续。",
+            ],
+            style_map["bullet"],
+        ),
+        callout(
+            "显示器分辨率、排列、主副屏关系或缩放比例变化后，"
+            "普通坐标建议重新采点，云桌面坐标建议重新校准。",
+            style_map,
+            BLUE,
+        ),
+        PageBreak(),
+    ]
+
+    story += [
+        p("07 数据目录与故障排查", style_map["section"]),
+        table(
+            [
+                ["目录", "内容"],
+                ["profiles", "本机 v4 .oclick 方案"],
+                ["drafts", "活动草稿和恢复数据"],
+                ["logs", "计划数、完成数、结果、耗时和断点"],
+                ["diagnostics", "设置、方案和运行异常诊断"],
+            ],
+            [42 * mm, 130 * mm],
+            style_map,
+        ),
+        Spacer(1, 7 * mm),
+        *bullets(
+            [
+                "安装版根目录：%LocalAppData%\\OrderedClicker。",
+                "免安装版根目录：程序旁的 OrderedClickerData。",
+                "免安装目录不可写时会明确报错，不会静默改写到其他位置。",
+                "快捷键冲突时关闭占用软件，或在设置中切换为组合快捷键。",
+                "点击位置偏移时先检查 Windows 缩放、显示器排列和云桌面校准。",
+            ],
+            style_map["bullet"],
+        ),
+        screenshot("ordered-clicker-help-v2.0.0.png", 145 * mm),
+        PageBreak(),
+    ]
+
+    story += [
+        p("08 安装、免安装与文件校验", style_map["section"]),
+        table(
+            [
+                ["交付文件", "用途"],
+                ["ordered-clicker-setup-v2.0.0.exe", "当前用户安装版"],
+                ["有序连点器-免安装.exe", "单文件免安装版"],
+                ["有序连点器-使用说明.pdf", "离线 PDF 说明"],
+                ["有序连点器-使用说明.html", "自包含 HTML 说明"],
+                ["SHA256SUMS.txt", "前四个文件的 SHA-256 校验值"],
+            ],
+            [82 * mm, 90 * mm],
+            style_map,
+        ),
+        Spacer(1, 9 * mm),
+        p("正式发布检查", style_map["heading"]),
+        *bullets(
+            [
+                "核对 SHA256SUMS.txt 中的文件名和哈希。",
+                "正式 Release 构建必须签名应用和安装器。",
+                "构建脚本会验证 Authenticode 状态和可信时间戳。",
+                "最终产品目录只允许以上五个文件，避免把内部 ZIP 或旧版本混入交付。",
+            ],
+            style_map["bullet"],
+        ),
+        Spacer(1, 12 * mm),
+        callout(
+            "版本：2.0.0\n文档日期：2026-09-04\n"
+            "本说明与五步工作台、v4 方案、安全角和五文件交付保持一致。",
+            style_map,
+            GREEN,
+        ),
+    ]
     return story
 
 
 def main() -> None:
-    register_fonts()
+    register_font()
     style_map = styles()
-
-    doc = BaseDocTemplate(
-        str(OUTPUT_PDF),
+    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
+    document = SimpleDocTemplate(
+        str(OUTPUT),
         pagesize=A4,
-        leftMargin=18 * mm,
         rightMargin=18 * mm,
-        topMargin=17 * mm,
-        bottomMargin=20 * mm,
-        title="有序连点器使用说明",
-        author="ljy-codes",
-        subject="有序连点器 1.3.1 零基础操作指导",
+        leftMargin=18 * mm,
+        topMargin=18 * mm,
+        bottomMargin=19 * mm,
+        title="有序连点器 2.0.0 使用说明",
+        author="Ordered Clicker",
+        subject="有序连点器 2.0.0 操作指导",
     )
-    frame = Frame(
-        doc.leftMargin,
-        doc.bottomMargin,
-        doc.width,
-        doc.height,
-        id="content",
-        leftPadding=0,
-        rightPadding=0,
-        topPadding=0,
-        bottomPadding=0,
+    document.build(
+        build_story(style_map),
+        onFirstPage=page_header_footer,
+        onLaterPages=page_header_footer,
     )
-    doc.addPageTemplates([PageTemplate(id="dark", frames=[frame], onPage=draw_page)])
-    doc.build(build_story(style_map))
-    print(f"Generated: {OUTPUT_PDF}")
-    print(f"Size: {OUTPUT_PDF.stat().st_size} bytes")
+    print(f"Generated: {OUTPUT}")
+    print(f"Size: {OUTPUT.stat().st_size} bytes")
 
 
 if __name__ == "__main__":

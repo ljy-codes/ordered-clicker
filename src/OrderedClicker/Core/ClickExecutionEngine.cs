@@ -7,7 +7,7 @@ namespace OrderedClicker.Core;
 public sealed class ClickExecutionEngine
 {
     private readonly IMouseController _mouseController;
-    private readonly Func<TimeSpan, CancellationToken, Task> _delay;
+    private readonly PausableDelay _pausableDelay;
     private readonly ScreenStabilityDetector? _stabilityDetector;
 
     public ClickExecutionEngine(
@@ -16,7 +16,7 @@ public sealed class ClickExecutionEngine
         ScreenStabilityDetector? stabilityDetector = null)
     {
         _mouseController = mouseController;
-        _delay = delay ?? Task.Delay;
+        _pausableDelay = new PausableDelay(delay);
         _stabilityDetector = stabilityDetector;
     }
 
@@ -57,6 +57,7 @@ public sealed class ClickExecutionEngine
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(checkpoint);
+        ArgumentNullException.ThrowIfNull(pauseGate);
         var stopwatch = Stopwatch.StartNew();
         var completedPoints = checkpoint.CompletedPointExecutionCount;
         var completedClicks = checkpoint.CompletedClickCount;
@@ -65,126 +66,153 @@ public sealed class ClickExecutionEngine
 
         try
         {
-            ValidateCheckpoint(plan, checkpoint);
-
-            for (var loopIndex = checkpoint.LoopIndex;
-                 loopIndex < plan.TotalLoops;
-                 loopIndex++)
+            ValidateCheckpoint(plan, nextCheckpoint);
+            while (nextCheckpoint.Stage != ExecutionStage.Completed)
             {
-                var firstPointIndex = loopIndex == checkpoint.LoopIndex
-                    ? checkpoint.PointIndex
-                    : 0;
+                cancellationToken.ThrowIfCancellationRequested();
+                var point = plan.Points[nextCheckpoint.PointIndex];
 
-                for (var pointIndex = firstPointIndex;
-                     pointIndex < plan.Points.Count;
-                     pointIndex++)
+                switch (nextCheckpoint.Stage)
                 {
-                    var point = plan.Points[pointIndex];
-                    var firstClickIndex =
-                        loopIndex == checkpoint.LoopIndex
-                        && pointIndex == checkpoint.PointIndex
-                            ? checkpoint.ClickIndex
-                            : 0;
-
-                    await pauseGate.WaitIfPausedAsync(cancellationToken);
-                    cancellationToken.ThrowIfCancellationRequested();
-                    _mouseController.MoveTo(
-                        point.X,
-                        point.Y,
-                        plan.VirtualScreen);
-
-                    for (var clickIndex = firstClickIndex;
-                         clickIndex < point.ClickCount;
-                         clickIndex++)
-                    {
+                    case ExecutionStage.Move:
                         await pauseGate.WaitIfPausedAsync(cancellationToken);
                         cancellationToken.ThrowIfCancellationRequested();
-                        _mouseController.LeftClick();
+                        _mouseController.MoveTo(point.X, point.Y, plan.VirtualScreen);
+                        nextCheckpoint = nextCheckpoint with
+                        {
+                            Stage = ExecutionStage.Click
+                        };
+                        break;
+
+                    case ExecutionStage.Click:
+                        await pauseGate.WaitIfPausedAsync(cancellationToken);
+                        cancellationToken.ThrowIfCancellationRequested();
+                        IndeterminateClickException? indeterminateClick = null;
+                        try
+                        {
+                            _mouseController.LeftClick();
+                        }
+                        catch (IndeterminateClickException exception)
+                        {
+                            indeterminateClick = exception;
+                        }
+
                         completedClicks++;
                         lastSourceIndex = point.SourceIndex;
-
-                        var pointFinished = clickIndex + 1 == point.ClickCount;
+                        var pointFinished =
+                            nextCheckpoint.ClickIndex + 1 == point.ClickCount;
                         if (pointFinished)
                         {
                             completedPoints++;
+                            nextCheckpoint = nextCheckpoint with
+                            {
+                                ClickIndex = point.ClickCount,
+                                Stage = ExecutionStage.AfterPointDelay,
+                                CompletedPointExecutionCount = completedPoints,
+                                CompletedClickCount = completedClicks
+                            };
+                        }
+                        else
+                        {
+                            nextCheckpoint = nextCheckpoint with
+                            {
+                                ClickIndex = nextCheckpoint.ClickIndex + 1,
+                                Stage = ExecutionStage.ClickInterval,
+                                CompletedPointExecutionCount = completedPoints,
+                                CompletedClickCount = completedClicks
+                            };
                         }
 
-                        nextCheckpoint = CalculateNextCheckpoint(
+                        ReportProgress(
                             plan,
-                            loopIndex,
-                            pointIndex,
-                            clickIndex,
+                            nextCheckpoint,
+                            point,
+                            completedPoints,
+                            completedClicks,
+                            progress);
+                        if (indeterminateClick is not null)
+                        {
+                            throw indeterminateClick;
+                        }
+
+                        break;
+
+                    case ExecutionStage.ClickInterval:
+                        await _pausableDelay.WaitAsync(
+                            point.ClickIntervalMs,
+                            pauseGate,
+                            cancellationToken);
+                        nextCheckpoint = nextCheckpoint with
+                        {
+                            Stage = ExecutionStage.Click
+                        };
+                        break;
+
+                    case ExecutionStage.AfterPointDelay:
+                        await _pausableDelay.WaitAsync(
+                            point.AfterDelayMs,
+                            pauseGate,
+                            cancellationToken);
+                        nextCheckpoint = nextCheckpoint with
+                        {
+                            Stage = ExecutionStage.StabilityCheck
+                        };
+                        break;
+
+                    case ExecutionStage.StabilityCheck:
+                        if (plan.ScreenStability.Enabled
+                            && _stabilityDetector is not null)
+                        {
+                            var stability = await _stabilityDetector.WaitForStableAsync(
+                                plan.StabilityRegion,
+                                plan.ScreenStability,
+                                pauseGate,
+                                cancellationToken);
+                            if (stability == ScreenStabilityResult.TimedOut)
+                            {
+                                pauseGate.Pause();
+                                ReportProgress(
+                                    plan,
+                                    nextCheckpoint,
+                                    point,
+                                    completedPoints,
+                                    completedClicks,
+                                    progress,
+                                    true,
+                                    $"点位 {point.SourceIndex + 1} 后画面未稳定");
+                                await pauseGate.WaitIfPausedAsync(cancellationToken);
+                            }
+                        }
+
+                        nextCheckpoint = AdvanceAfterPoint(plan, nextCheckpoint);
+                        break;
+
+                    case ExecutionStage.LoopDelay:
+                        await _pausableDelay.WaitAsync(
+                            plan.LoopDelayMs,
+                            pauseGate,
+                            cancellationToken);
+                        nextCheckpoint = new ExecutionCheckpoint(
+                            nextCheckpoint.LoopIndex + 1,
+                            0,
+                            0,
+                            ExecutionStage.Move,
                             completedPoints,
                             completedClicks);
+                        break;
 
-                        progress?.Report(new ExecutionProgress(
-                            loopIndex + 1,
-                            plan.TotalLoops,
-                            pointIndex + 1,
-                            plan.Points.Count,
-                            clickIndex + 1,
-                            point.ClickCount)
-                        {
-                            SourceIndex = point.SourceIndex,
-                            CompletedPointExecutionCount = completedPoints,
-                            PlannedPointExecutionCount = plan.PlannedPointExecutionCount,
-                            CompletedClickCount = completedClicks,
-                            PlannedClickCount = plan.PlannedClickCount
-                        });
-
-                        if (!pointFinished)
-                        {
-                            await DelayAsync(point.ClickIntervalMs, cancellationToken);
-                        }
-                    }
-
-                    await DelayAsync(point.AfterDelayMs, cancellationToken);
-
-                    if (plan.ScreenStability.Enabled
-                        && _stabilityDetector is not null)
-                    {
-                        var stability = await _stabilityDetector.WaitForStableAsync(
-                            plan.StabilityRegion,
-                            plan.ScreenStability,
-                            cancellationToken);
-                        if (stability == ScreenStabilityResult.TimedOut)
-                        {
-                            pauseGate.Pause();
-                            progress?.Report(new ExecutionProgress(
-                                loopIndex + 1,
-                                plan.TotalLoops,
-                                pointIndex + 1,
-                                plan.Points.Count,
-                                point.ClickCount,
-                                point.ClickCount)
-                            {
-                                SourceIndex = point.SourceIndex,
-                                CompletedPointExecutionCount = completedPoints,
-                                PlannedPointExecutionCount = plan.PlannedPointExecutionCount,
-                                CompletedClickCount = completedClicks,
-                                PlannedClickCount = plan.PlannedClickCount,
-                                RequiresUserContinue = true,
-                                Message = $"点位 {point.SourceIndex + 1} 后画面未稳定"
-                            });
-                            await pauseGate.WaitIfPausedAsync(cancellationToken);
-                        }
-                    }
-                }
-
-                if (loopIndex + 1 < plan.TotalLoops)
-                {
-                    await DelayAsync(plan.LoopDelayMs, cancellationToken);
+                    default:
+                        throw new InvalidOperationException("执行断点阶段无效。");
                 }
             }
 
             var completed =
                 completedPoints == plan.PlannedPointExecutionCount
                 && completedClicks == plan.PlannedClickCount;
-
             return CreateResult(
                 completed ? ExecutionOutcome.Completed : ExecutionOutcome.Failed,
                 completed
-                    ? "全部计划点位和点击次数已完成。"
+                    ? "全部计划点位、等待阶段和点击次数已完成。"
                     : "执行计数与计划不一致，未标记为完成。",
                 plan,
                 completedPoints,
@@ -223,61 +251,104 @@ public sealed class ClickExecutionEngine
         }
     }
 
+    private static ExecutionCheckpoint AdvanceAfterPoint(
+        ExecutionPlan plan,
+        ExecutionCheckpoint checkpoint)
+    {
+        if (checkpoint.PointIndex + 1 < plan.Points.Count)
+        {
+            return new ExecutionCheckpoint(
+                checkpoint.LoopIndex,
+                checkpoint.PointIndex + 1,
+                0,
+                ExecutionStage.Move,
+                checkpoint.CompletedPointExecutionCount,
+                checkpoint.CompletedClickCount);
+        }
+
+        if (checkpoint.LoopIndex + 1 < plan.TotalLoops)
+        {
+            return checkpoint with
+            {
+                Stage = ExecutionStage.LoopDelay
+            };
+        }
+
+        return new ExecutionCheckpoint(
+            plan.TotalLoops,
+            0,
+            0,
+            ExecutionStage.Completed,
+            checkpoint.CompletedPointExecutionCount,
+            checkpoint.CompletedClickCount);
+    }
+
     private static void ValidateCheckpoint(
         ExecutionPlan plan,
         ExecutionCheckpoint checkpoint)
     {
+        if (plan.Points.Count == 0)
+        {
+            throw new InvalidOperationException("执行计划没有可执行点位。");
+        }
+
+        if (checkpoint.Stage == ExecutionStage.Completed)
+        {
+            if (checkpoint.LoopIndex != plan.TotalLoops)
+            {
+                throw new InvalidOperationException("完成断点的循环序号无效。");
+            }
+
+            return;
+        }
+
         if (checkpoint.LoopIndex < 0
-            || checkpoint.LoopIndex > plan.TotalLoops
+            || checkpoint.LoopIndex >= plan.TotalLoops
             || checkpoint.PointIndex < 0
-            || checkpoint.PointIndex > plan.Points.Count
-            || checkpoint.ClickIndex < 0)
+            || checkpoint.PointIndex >= plan.Points.Count
+            || checkpoint.ClickIndex < 0
+            || checkpoint.ClickIndex > plan.Points[checkpoint.PointIndex].ClickCount)
         {
             throw new InvalidOperationException("执行断点无效。");
         }
 
-        if (checkpoint.LoopIndex < plan.TotalLoops
-            && checkpoint.PointIndex < plan.Points.Count
+        if (checkpoint.Stage is ExecutionStage.Move or ExecutionStage.Click
             && checkpoint.ClickIndex >= plan.Points[checkpoint.PointIndex].ClickCount)
         {
             throw new InvalidOperationException("执行断点的点击序号无效。");
         }
     }
 
-    private static ExecutionCheckpoint CalculateNextCheckpoint(
+    private static void ReportProgress(
         ExecutionPlan plan,
-        int loopIndex,
-        int pointIndex,
-        int clickIndex,
+        ExecutionCheckpoint checkpoint,
+        ExecutionPlanPoint point,
         long completedPoints,
-        long completedClicks)
+        long completedClicks,
+        IProgress<ExecutionProgress>? progress,
+        bool requiresUserContinue = false,
+        string message = "")
     {
-        if (clickIndex + 1 < plan.Points[pointIndex].ClickCount)
+        var completedClickInPoint = Math.Min(
+            checkpoint.ClickIndex,
+            point.ClickCount);
+        progress?.Report(new ExecutionProgress(
+            checkpoint.LoopIndex + 1,
+            plan.TotalLoops,
+            checkpoint.PointIndex + 1,
+            plan.Points.Count,
+            completedClickInPoint,
+            point.ClickCount)
         {
-            return new ExecutionCheckpoint(
-                loopIndex,
-                pointIndex,
-                clickIndex + 1,
-                completedPoints,
-                completedClicks);
-        }
-
-        if (pointIndex + 1 < plan.Points.Count)
-        {
-            return new ExecutionCheckpoint(
-                loopIndex,
-                pointIndex + 1,
-                0,
-                completedPoints,
-                completedClicks);
-        }
-
-        return new ExecutionCheckpoint(
-            loopIndex + 1,
-            0,
-            0,
-            completedPoints,
-            completedClicks);
+            SourceIndex = point.SourceIndex,
+            CompletedPointExecutionCount = completedPoints,
+            PlannedPointExecutionCount = plan.PlannedPointExecutionCount,
+            CompletedClickCount = completedClicks,
+            PlannedClickCount = plan.PlannedClickCount,
+            Stage = checkpoint.Stage,
+            RequiresUserContinue = requiresUserContinue,
+            Message = message
+        });
     }
 
     private static ExecutionResult CreateResult(
@@ -300,12 +371,5 @@ public sealed class ClickExecutionEngine
             checkpoint,
             message,
             elapsed);
-    }
-
-    private Task DelayAsync(int milliseconds, CancellationToken cancellationToken)
-    {
-        return milliseconds <= 0
-            ? Task.CompletedTask
-            : _delay(TimeSpan.FromMilliseconds(milliseconds), cancellationToken);
     }
 }

@@ -57,6 +57,11 @@ internal static class Program
                 ExecutionPlanServiceTests.Run();
                 return Task.CompletedTask;
             }),
+            ("ExecutionPlanSafety", () =>
+            {
+                ExecutionPlanSafetyTests.Run();
+                return Task.CompletedTask;
+            }),
             ("PointTimingService", () =>
             {
                 PointTimingServiceTests.Run();
@@ -77,6 +82,26 @@ internal static class Program
             ("ProfileService", () =>
             {
                 ProfileServiceTests.Run();
+                return Task.CompletedTask;
+            }),
+            ("AppDataPaths", () =>
+            {
+                AppDataPathsTests.Run();
+                return Task.CompletedTask;
+            }),
+            ("DraftService", () =>
+            {
+                DraftServiceTests.Run();
+                return Task.CompletedTask;
+            }),
+            ("LegacyProfileMigration", () =>
+            {
+                LegacyProfileMigrationServiceTests.Run();
+                return Task.CompletedTask;
+            }),
+            ("DiagnosticAndSettings", () =>
+            {
+                DiagnosticAndSettingsTests.Run();
                 return Task.CompletedTask;
             }),
             ("ThemeSettings", () =>
@@ -102,7 +127,15 @@ internal static class Program
             catch (Exception exception)
             {
                 failed++;
-                Console.Error.WriteLine($"FAIL {test.Name}: {exception.Message}");
+                var failure = exception;
+                while (failure.InnerException is not null)
+                {
+                    failure = failure.InnerException;
+                }
+
+                Console.Error.WriteLine(
+                    $"FAIL {test.Name}: {failure.Message}{Environment.NewLine}"
+                    + failure.StackTrace);
             }
         }
 
