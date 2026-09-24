@@ -25,7 +25,7 @@ def main() -> None:
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>有序连点器 2.0.0 使用说明</title>
+  <title>有序连点器 2.1.0 使用说明</title>
   <style>
     :root {{
       color-scheme: dark;
@@ -89,10 +89,10 @@ def main() -> None:
 </head>
 <body>
   <header>
-    <h1>有序连点器 2.0.0</h1>
+    <h1>有序连点器 2.1.0</h1>
     <p class="subtitle">面向普通用户和云桌面长流程的五步式操作说明。新版本使用 v4 <code>.oclick</code> 方案、活动草稿、可靠断点和双重停止保护。</p>
-    <div class="meta"><span>适用：Windows 10/11 x64</span><span>更新：2026-09-04</span><span>默认快捷键：F6 / F7 / F8</span></div>
-    <img class="hero-image" alt="有序连点器 2.0.0 主界面" src="data:image/png;base64,{main_image}">
+    <div class="meta"><span>适用：Windows 10/11 x64</span><span>更新：2026-09-24</span><span>默认快捷键：F6 / F7 / F8</span></div>
+    <img class="hero-image" alt="有序连点器 2.1.0 主界面" src="data:image/png;base64,{main_image}">
   </header>
   <main>
     <section>
@@ -201,7 +201,7 @@ def main() -> None:
 
     <section>
       <h2>交付文件与校验</h2>
-      <pre><code>ordered-clicker-setup-v2.0.0.exe
+      <pre><code>ordered-clicker-setup-v2.1.0.exe
 有序连点器-免安装.exe
 有序连点器-使用说明.pdf
 有序连点器-使用说明.html
@@ -209,7 +209,7 @@ SHA256SUMS.txt</code></pre>
       <p>使用 <code>SHA256SUMS.txt</code> 核对安装包、免安装程序和两份说明文件。正式 Release 构建还会验证应用和安装器的 Authenticode 签名及时间戳。</p>
     </section>
   </main>
-  <footer>有序连点器 2.0.0 · 使用说明 · 2026-09-04</footer>
+  <footer>有序连点器 2.1.0 · 使用说明 · 2026-09-24</footer>
 </body>
 </html>
 """

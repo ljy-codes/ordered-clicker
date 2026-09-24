@@ -1,0 +1,77 @@
+name: CI and Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Run automated tests
+        shell: pwsh
+        run: ./scripts/test.ps1 -Configuration Release
+      - name: Run installer contract tests
+        shell: pwsh
+        run: ./tests/Installer.Tests.ps1
+      - name: Build application
+        shell: pwsh
+        run: dotnet build OrderedClicker.sln -c Release --no-restore
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: verify
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install guide dependencies
+        run: python -m pip install reportlab pypdf
+      - name: Build product guides
+        run: |
+          python scripts/guide/build_product_guide.py
+          python scripts/guide/build_pdf_guide.py
+          python scripts/guide/verify_guide.py --skip-video
+      - name: Install Inno Setup 7
+        shell: pwsh
+        run: >-
+          winget install --id JRSoftware.InnoSetup --exact --silent
+          --accept-package-agreements --accept-source-agreements
+      - name: Build release packages
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart("v")
+          ./scripts/build-installer.ps1 `
+            -Version $version `
+            -ProductDirectory "${{ runner.temp }}\ordered-clicker-product"
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            ${{ runner.temp }}/ordered-clicker-product/ordered-clicker-setup-*.exe
+            ${{ runner.temp }}/ordered-clicker-product/有序连点器-免安装.exe
+            ${{ runner.temp }}/ordered-clicker-product/有序连点器-使用说明.pdf
+            ${{ runner.temp }}/ordered-clicker-product/有序连点器-使用说明.html
+            ${{ runner.temp }}/ordered-clicker-product/SHA256SUMS.txt
+            publish/packages/ordered-clicker-portable-*.zip

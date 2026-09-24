@@ -58,6 +58,7 @@ public sealed class DiagnosticLogService
                 JsonSerializer.Serialize(payload, JsonOptions),
                 new UTF8Encoding(false));
             File.Move(temporary, path, true);
+            TryPrune();
             return path;
         }
         finally
@@ -66,6 +67,23 @@ public sealed class DiagnosticLogService
             {
                 File.Delete(temporary);
             }
+        }
+    }
+
+    private void TryPrune()
+    {
+        try
+        {
+            new LogRetentionService().Prune(
+                DiagnosticsDirectory,
+                LogRetentionPolicy.Default,
+                DateTimeOffset.UtcNow);
+        }
+        catch (Exception exception) when (
+            exception is IOException
+                or UnauthorizedAccessException
+                or ArgumentException)
+        {
         }
     }
 }

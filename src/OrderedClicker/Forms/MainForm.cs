@@ -28,10 +28,12 @@ public sealed partial class MainForm : Form
     private readonly SettingsService _settingsService;
     private readonly DraftService? _draftService;
     private readonly DiagnosticLogService? _diagnosticLogService;
+    private readonly ExecutionCheckpointService? _executionCheckpointService;
     private readonly LegacyProfileMigrationService _legacyMigrationService = new();
     private readonly System.Windows.Forms.Timer _draftTimer = new();
-    private readonly System.Windows.Forms.Timer _safetyCornerTimer = new();
-    private readonly SafetyCornerService _safetyCornerService = new();
+    private readonly System.Windows.Forms.Timer _executionProgressTimer = new();
+    private readonly LatestExecutionProgress _latestExecutionProgress = new();
+    private readonly ReplaceableDelay _captureDelay = new();
     private readonly ClickExecutionEngine _executionEngine = new(
         new WindowsMouseController(),
         stabilityDetector: new ScreenStabilityDetector(new WindowsScreenSampler()));
@@ -103,7 +105,9 @@ public sealed partial class MainForm : Form
     private string? _profileSelectorTextBeforeSelection;
     private bool _suppressProfileSelection;
     private ExecutionPlan? _pendingExecutionPlan;
+    private ExecutionPlan? _activeExecutionPlan;
     private ExecutionCheckpoint _executionCheckpoint = ExecutionCheckpoint.Start;
+    private DateTimeOffset _lastCheckpointSaveAt = DateTimeOffset.MinValue;
     private bool _suspendHotKeyActions;
     private bool _activeHotKeysKnown;
     private Guid _profileId = Guid.NewGuid();
@@ -116,6 +120,11 @@ public sealed partial class MainForm : Form
     private readonly Stack<List<ClickPoint>> _pointUndoStack = new();
     private const int PointUndoHistoryLimit = 10;
     private bool _executionStartInProgress;
+    private bool _draftDirty;
+    private int _captureDelayVersion;
+    private Task? _activeExecutionTask;
+    private bool _allowClose;
+    private bool _closeInProgress;
 
     public MainForm(
         bool enableGlobalHotKeys = true,
@@ -134,6 +143,9 @@ public sealed partial class MainForm : Form
         _diagnosticLogService = appDataPaths is null
             ? null
             : new DiagnosticLogService(appDataPaths);
+        _executionCheckpointService = appDataPaths is null
+            ? null
+            : new ExecutionCheckpointService(appDataPaths);
         _executionLogService = appDataPaths is null
             ? new ExecutionLogService()
             : new ExecutionLogService(appDataPaths);
@@ -148,18 +160,20 @@ public sealed partial class MainForm : Form
         ApplyProfile(new ClickProfile());
         UpdateProfileBaseline();
         _lastDraftSnapshot = ProfileService.CloneProfile(_baselineProfile!);
+        _draftDirty = false;
         UpdateCaptureButton();
         SetExecutionState(ExecutionState.Idle);
         UpdateHotKeyText();
         ApplyTheme(_theme);
         ConfigureDraftTimer();
-        ConfigureSafetyCornerTimer();
+        ConfigureExecutionProgressTimer();
     }
 
     protected override void OnShown(EventArgs e)
     {
         base.OnShown(e);
         RecoverDraftIfAvailable();
+        RecoverExecutionCheckpointIfAvailable();
         if (!string.IsNullOrWhiteSpace(_settingsLoadWarning))
         {
             MessageBox.Show(
@@ -217,18 +231,68 @@ public sealed partial class MainForm : Form
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
+        if (!_allowClose
+            && _activeExecutionTask is { IsCompleted: false })
+        {
+            e.Cancel = true;
+            if (!_closeInProgress)
+            {
+                _closeInProgress = true;
+                _ = CloseAfterExecutionAsync();
+            }
+
+            return;
+        }
+
         FlushDraft();
         _draftTimer.Stop();
         _draftTimer.Dispose();
-        _safetyCornerTimer.Stop();
-        _safetyCornerTimer.Dispose();
+        _executionProgressTimer.Stop();
+        _executionProgressTimer.Dispose();
+        CancelDelayedCapture();
         _executionCancellation?.Cancel();
         _pauseGate.Resume();
         _hotKeyCoordinator?.Dispose();
+        _captureDelay.Dispose();
         _toolTip.Dispose();
         _captureHud?.Close();
         _runStatusForm?.Dispose();
         base.OnFormClosing(e);
+    }
+
+    public void ActivateExistingInstance()
+    {
+        if (WindowState == FormWindowState.Minimized)
+        {
+            WindowState = FormWindowState.Normal;
+        }
+
+        Show();
+        Activate();
+        TopMost = true;
+        TopMost = false;
+    }
+
+    private async Task CloseAfterExecutionAsync()
+    {
+        SetStatus("正在安全停止并保存执行断点…");
+        StopExecution();
+        try
+        {
+            if (_activeExecutionTask is not null)
+            {
+                await _activeExecutionTask;
+            }
+        }
+        catch (Exception exception)
+        {
+            RecordDiagnostic("execution.close", exception);
+        }
+        finally
+        {
+            _allowClose = true;
+            Close();
+        }
     }
 
     private void InitializeWindow()
@@ -928,6 +992,15 @@ public sealed partial class MainForm : Form
             eventArgs.ThrowException = false;
             SetStatus("请输入有效的整数。");
         };
+        _pointGrid.CellValueChanged += (_, _) => MarkDraftDirty();
+        _profileSelector.TextChanged += (_, _) => MarkDraftDirty();
+        _totalLoopsInput.ValueChanged += (_, _) => MarkDraftDirty();
+        _loopDelayInput.ValueChanged += (_, _) => MarkDraftDirty();
+        _defaultClickIntervalInput.ValueChanged += (_, _) => MarkDraftDirty();
+        _defaultAfterDelayInput.ValueChanged += (_, _) => MarkDraftDirty();
+        _cloudDesktopEnabledCheckBox.CheckedChanged += (_, _) => MarkDraftDirty();
+        _waitForStableScreenCheckBox.CheckedChanged += (_, _) => MarkDraftDirty();
+        _stabilityTimeoutInput.ValueChanged += (_, _) => MarkDraftDirty();
     }
 
     private void RegisterGlobalHotKeys()
@@ -959,38 +1032,23 @@ public sealed partial class MainForm : Form
         _draftTimer.Start();
     }
 
-    private void ConfigureSafetyCornerTimer()
+    private void ConfigureExecutionProgressTimer()
     {
-        _safetyCornerTimer.Interval = 50;
-        _safetyCornerTimer.Tick += (_, _) =>
+        _executionProgressTimer.Interval = 100;
+        _executionProgressTimer.Tick += (_, _) =>
         {
-            if (!_settings.SafetyCornerEnabled
-                || _executionState is ExecutionState.Idle or ExecutionState.Stopping)
+            if (_latestExecutionProgress.TryConsume(out var progress))
             {
-                _safetyCornerService.Reset();
-                return;
-            }
-
-            var bounds = _monitorService.GetVirtualScreenBounds();
-            if (_safetyCornerService.Update(
-                    Cursor.Position,
-                    bounds,
-                    _settings.SafetyCorner,
-                    _settings.SafetyCornerSize,
-                    TimeSpan.FromMilliseconds(_settings.SafetyCornerDwellMs),
-                    DateTimeOffset.Now))
-            {
-                SetStatus("安全角已触发，正在停止执行。");
-                StopExecution();
-                _safetyCornerService.Reset();
+                UpdateExecutionProgress(progress!);
             }
         };
-        _safetyCornerTimer.Start();
+        _executionProgressTimer.Start();
     }
 
     private void SaveDraftIfChanged()
     {
         if (_draftService is null
+            || !_draftDirty
             || _executionState != ExecutionState.Idle
             || _pointGrid.IsCurrentCellInEditMode)
         {
@@ -1000,12 +1058,6 @@ public sealed partial class MainForm : Form
         try
         {
             var snapshot = CreateProfileSnapshot();
-            if (_lastDraftSnapshot is not null
-                && ProfileService.ProfilesEqual(_lastDraftSnapshot, snapshot))
-            {
-                return;
-            }
-
             _draftService.Save(new DraftEnvelope(
                 snapshot,
                 _currentProfilePath,
@@ -1013,11 +1065,20 @@ public sealed partial class MainForm : Form
                 DateTime.UtcNow,
                 _currentProfileFileHash));
             _lastDraftSnapshot = ProfileService.CloneProfile(snapshot);
+            _draftDirty = false;
         }
         catch (Exception exception)
         {
             RecordDiagnostic("draft.save", exception);
             SetStatus("自动草稿保存失败，详情已写入诊断日志。");
+        }
+    }
+
+    private void MarkDraftDirty()
+    {
+        if (!_suppressProfileSelection)
+        {
+            _draftDirty = true;
         }
     }
 
@@ -1289,6 +1350,7 @@ public sealed partial class MainForm : Form
             return;
         }
 
+        CancelDelayedCapture();
         if (_captureMode is CaptureMode.CloudRegionTopLeft
             or CaptureMode.CloudRegionBottomRight)
         {
@@ -1468,9 +1530,33 @@ public sealed partial class MainForm : Form
             ShowCaptureHud("2 秒后记录，请移动鼠标到目标位置。");
         }
 
+        var version = Interlocked.Increment(ref _captureDelayVersion);
+        _captureNowButton.Enabled = false;
+        _captureNowButton.Text = "等待记录…";
         SetStatus("2 秒后记录当前位置，请移动鼠标到目标位置。");
-        await Task.Delay(TimeSpan.FromSeconds(2));
-        CaptureCurrentPoint();
+        await _captureDelay.RunAsync(
+            TimeSpan.FromSeconds(2),
+            _ =>
+            {
+                CaptureCurrentPoint();
+                return Task.CompletedTask;
+            });
+        if (version == _captureDelayVersion && !IsDisposed)
+        {
+            _captureNowButton.Text = "2 秒后记录";
+            _captureNowButton.Enabled = _executionState == ExecutionState.Idle;
+        }
+    }
+
+    private void CancelDelayedCapture()
+    {
+        Interlocked.Increment(ref _captureDelayVersion);
+        _captureDelay.Cancel();
+        if (!IsDisposed)
+        {
+            _captureNowButton.Text = "2 秒后记录";
+            _captureNowButton.Enabled = _executionState == ExecutionState.Idle;
+        }
     }
 
     private void PushPointUndo()
@@ -1501,6 +1587,7 @@ public sealed partial class MainForm : Form
 
         _points = new BindingList<ClickPoint>(
             _pointUndoStack.Pop().Select(ClonePoint).ToList());
+        SubscribePointChanges();
         _pointBindingSource.DataSource = _points;
         _pointGrid.Refresh();
         _undoButton.Enabled = _pointUndoStack.Count > 0;
@@ -1539,6 +1626,7 @@ public sealed partial class MainForm : Form
         var value = decimal.ToInt32(_defaultClickIntervalInput.Value);
         PointTimingService.ApplyClickInterval(_points, value);
         _pointGrid.Refresh();
+        MarkDraftDirty();
         SetStatus(
             _points.Count == 0
                 ? $"新采集点的点击间隔已设为 {value} ms。"
@@ -1551,6 +1639,7 @@ public sealed partial class MainForm : Form
         var value = decimal.ToInt32(_defaultAfterDelayInput.Value);
         PointTimingService.ApplyAfterDelay(_points, value);
         _pointGrid.Refresh();
+        MarkDraftDirty();
         SetStatus(
             _points.Count == 0
                 ? $"新采集点的点后等待已设为 {value} ms。"
@@ -1866,10 +1955,23 @@ public sealed partial class MainForm : Form
             decimal.ToInt32(_defaultAfterDelayInput.Minimum),
             decimal.ToInt32(_defaultAfterDelayInput.Maximum));
         _points = new BindingList<ClickPoint>(profile.Points.Select(ClonePoint).ToList());
+        SubscribePointChanges();
         _pointBindingSource.DataSource = _points;
         ApplyCloudDesktopProfile(profile);
         _pointGrid.Refresh();
         UpdateCaptureEmptyState();
+        _draftDirty = false;
+    }
+
+    private void SubscribePointChanges()
+    {
+        _points.ListChanged -= PointsOnListChanged;
+        _points.ListChanged += PointsOnListChanged;
+    }
+
+    private void PointsOnListChanged(object? sender, ListChangedEventArgs eventArgs)
+    {
+        MarkDraftDirty();
     }
 
     private void TrackProfileIdentity(ClickProfile profile)

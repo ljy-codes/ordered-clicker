@@ -79,6 +79,18 @@ internal static class Program
                 ExecutionReliabilityServiceTests.Run();
                 return Task.CompletedTask;
             }),
+            ("ExecutionCheckpointService", () =>
+            {
+                ExecutionCheckpointServiceTests.Run();
+                return Task.CompletedTask;
+            }),
+            ("RuntimeCoordinator", RuntimeCoordinatorTests.RunAsync),
+            ("LogRetentionService", () =>
+            {
+                LogRetentionServiceTests.Run();
+                return Task.CompletedTask;
+            }),
+            ("SingleInstanceCoordinator", SingleInstanceCoordinatorTests.RunAsync),
             ("ProfileService", () =>
             {
                 ProfileServiceTests.Run();

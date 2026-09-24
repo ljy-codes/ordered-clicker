@@ -62,6 +62,7 @@ public sealed class ExecutionLogService
                 JsonSerializer.Serialize(payload, JsonOptions),
                 new UTF8Encoding(false));
             File.Move(temporary, path, true);
+            TryPrune();
             return path;
         }
         finally
@@ -70,6 +71,23 @@ public sealed class ExecutionLogService
             {
                 File.Delete(temporary);
             }
+        }
+    }
+
+    private void TryPrune()
+    {
+        try
+        {
+            new LogRetentionService().Prune(
+                LogDirectory,
+                LogRetentionPolicy.Default,
+                DateTimeOffset.UtcNow);
+        }
+        catch (Exception exception) when (
+            exception is IOException
+                or UnauthorizedAccessException
+                or ArgumentException)
+        {
         }
     }
 }

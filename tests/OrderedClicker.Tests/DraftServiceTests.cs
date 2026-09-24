@@ -45,15 +45,20 @@ internal static class DraftServiceTests
             null,
             null,
             DateTime.UtcNow));
-        Directory.CreateDirectory(service.DraftPath + ".tmp");
-
-        TestAssert.Throws<UnauthorizedAccessException>(
-            () => service.Save(new DraftEnvelope(
-                new ClickProfile { Name = "新草稿" },
-                null,
-                null,
-                DateTime.UtcNow)),
-            "临时文件不可写时保存应失败");
+        using (var locked = new FileStream(
+                   service.DraftPath,
+                   FileMode.Open,
+                   FileAccess.Read,
+                   FileShare.None))
+        {
+            TestAssert.Throws<UnauthorizedAccessException>(
+                () => service.Save(new DraftEnvelope(
+                    new ClickProfile { Name = "新草稿" },
+                    null,
+                    null,
+                    DateTime.UtcNow)),
+                "目标文件被占用时保存应失败");
+        }
 
         TestAssert.Equal("旧草稿", service.Load()!.Profile.Name,
             "草稿写入失败时必须保留上一次成功内容");

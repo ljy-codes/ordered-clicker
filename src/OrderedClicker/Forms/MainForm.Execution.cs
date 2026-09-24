@@ -30,20 +30,27 @@ public sealed partial class MainForm
 
     private async Task StartExecutionAsync()
     {
-        if (_executionStartInProgress)
+        if (_executionStartInProgress
+            || _activeExecutionTask is { IsCompleted: false })
         {
             SetStatus("正在准备执行，请勿重复启动。");
             return;
         }
 
         _executionStartInProgress = true;
+        var executionTask = StartExecutionCoreAsync();
+        _activeExecutionTask = executionTask;
         try
         {
-            await StartExecutionCoreAsync();
+            await executionTask;
         }
         finally
         {
             _executionStartInProgress = false;
+            if (ReferenceEquals(_activeExecutionTask, executionTask))
+            {
+                _activeExecutionTask = null;
+            }
         }
     }
 
@@ -140,11 +147,25 @@ public sealed partial class MainForm
         }
 
         _captureMode = CaptureMode.Idle;
+        CancelDelayedCapture();
+        _latestExecutionProgress.Clear();
         UpdateCaptureButton();
         _pauseGate.Resume();
         using var executionCancellation = new CancellationTokenSource();
         _executionCancellation = executionCancellation;
+        _activeExecutionPlan = plan;
         SetConfigurationEnabled(false);
+        await using var safetyWatchdog = new SafetyCornerWatchdog(
+            () => _settings.SafetyCornerEnabled
+                  && _executionState is not ExecutionState.Idle
+                  and not ExecutionState.Stopping,
+            () => Cursor.Position,
+            _monitorService.GetVirtualScreenBounds,
+            () => _settings.SafetyCorner,
+            () => _settings.SafetyCornerSize,
+            () => TimeSpan.FromMilliseconds(_settings.SafetyCornerDwellMs),
+            () => RequestSafetyStop(executionCancellation));
+        safetyWatchdog.Start();
 
         try
         {
@@ -162,13 +183,12 @@ public sealed partial class MainForm
             }
 
             SetExecutionState(ExecutionState.Running);
-            var progress = new Progress<ExecutionProgress>(UpdateExecutionProgress);
             var result = await Task.Run(
                 () => _executionEngine.ExecuteAsync(
                     plan,
                     checkpoint,
                     _pauseGate,
-                    progress,
+                    _latestExecutionProgress,
                     executionCancellation.Token));
 
             try
@@ -201,6 +221,8 @@ public sealed partial class MainForm
             {
                 _executionCancellation = null;
             }
+            _activeExecutionPlan = null;
+            _latestExecutionProgress.Clear();
             SetConfigurationEnabled(true);
             SetExecutionState(ExecutionState.Idle);
             CloseRunStatusForm();
@@ -263,6 +285,7 @@ public sealed partial class MainForm
         _pendingExecutionPlan = plan;
         _executionCheckpoint = checkpoint;
         _restartButton.Visible = true;
+        SaveExecutionCheckpoint(plan, checkpoint, true);
     }
 
     private void ClearExecutionCheckpoint()
@@ -270,6 +293,14 @@ public sealed partial class MainForm
         _pendingExecutionPlan = null;
         _executionCheckpoint = ExecutionCheckpoint.Start;
         _restartButton.Visible = false;
+        try
+        {
+            _executionCheckpointService?.Clear();
+        }
+        catch (Exception exception)
+        {
+            RecordDiagnostic("execution.checkpoint.clear", exception);
+        }
         if (_executionState == ExecutionState.Idle)
         {
             SetExecutionState(ExecutionState.Idle);
@@ -303,6 +334,19 @@ public sealed partial class MainForm
             + $"总点击 {progress.CompletedClickCount}/{progress.PlannedClickCount}，"
             + $"阶段 {DescribeExecutionStage(progress.Stage)}";
         _runStatusForm?.UpdateProgress(_progressStatusLabel.Text);
+        if (_activeExecutionPlan is not null)
+        {
+            var checkpoint = new ExecutionCheckpoint(
+                Math.Max(0, progress.CurrentLoop - 1),
+                Math.Max(0, progress.PointIndex - 1),
+                progress.ClickIndex,
+                progress.Stage,
+                progress.CompletedPointExecutionCount,
+                progress.CompletedClickCount);
+            _pendingExecutionPlan = _activeExecutionPlan;
+            _executionCheckpoint = checkpoint;
+            SaveExecutionCheckpoint(_activeExecutionPlan, checkpoint, false);
+        }
 
         if (progress.RequiresUserContinue)
         {
@@ -310,6 +354,111 @@ public sealed partial class MainForm
             SetStatus(
                 $"{progress.Message}。确认页面可操作后按 "
                 + $"{StartPauseHotKeyText} 继续，或按 {StopHotKeyText} 停止。");
+        }
+    }
+
+    private void RequestSafetyStop(CancellationTokenSource executionCancellation)
+    {
+        _pauseGate.Resume();
+        executionCancellation.Cancel();
+        if (!IsHandleCreated || IsDisposed)
+        {
+            return;
+        }
+
+        BeginInvoke(() =>
+        {
+            if (_executionState != ExecutionState.Idle)
+            {
+                SetExecutionState(ExecutionState.Stopping);
+                SetStatus("安全角已触发，正在停止执行。");
+            }
+        });
+    }
+
+    private void SaveExecutionCheckpoint(
+        ExecutionPlan plan,
+        ExecutionCheckpoint checkpoint,
+        bool force)
+    {
+        if (_executionCheckpointService is null)
+        {
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        if (!force
+            && now - _lastCheckpointSaveAt < TimeSpan.FromMilliseconds(500))
+        {
+            return;
+        }
+
+        try
+        {
+            _executionCheckpointService.Save(new ExecutionCheckpointEnvelope(
+                1,
+                Application.ProductVersion,
+                plan,
+                plan.ProfileFingerprint,
+                checkpoint,
+                now));
+            _lastCheckpointSaveAt = now;
+        }
+        catch (Exception exception)
+        {
+            RecordDiagnostic("execution.checkpoint.save", exception);
+        }
+    }
+
+    private void RecoverExecutionCheckpointIfAvailable()
+    {
+        if (_executionCheckpointService is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var envelope = _executionCheckpointService.Load();
+            if (envelope is null)
+            {
+                return;
+            }
+
+            var restore = MessageBox.Show(
+                this,
+                "检测到上次未完成的执行任务。是否从保存的断点继续？\n\n"
+                + "异常退出附近的最后一步可能需要确认，避免重复操作。",
+                "恢复执行断点",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question) == DialogResult.Yes;
+            if (!restore)
+            {
+                _executionCheckpointService.Clear();
+                return;
+            }
+
+            _pendingExecutionPlan = envelope.Plan;
+            _executionCheckpoint = envelope.Checkpoint;
+            _restartButton.Visible = true;
+            SetExecutionState(ExecutionState.Idle);
+            SetStatus($"已恢复执行断点，可从第 {GetResumeSourceRow()} 步继续。");
+        }
+        catch (Exception exception)
+        {
+            RecordDiagnostic("execution.checkpoint.load", exception);
+            try
+            {
+                _executionCheckpointService.QuarantineBrokenCheckpoint();
+            }
+            catch (Exception quarantineException)
+            {
+                RecordDiagnostic(
+                    "execution.checkpoint.quarantine",
+                    quarantineException);
+            }
+
+            SetStatus("执行断点已损坏并隔离，本次将重新开始。");
         }
     }
 
@@ -407,6 +556,7 @@ public sealed partial class MainForm
         _defaultAfterDelayInput.Enabled = enabled;
         _pointGrid.Enabled = enabled;
         _captureButton.Enabled = enabled;
+        _captureNowButton.Enabled = enabled;
         _moveUpButton.Enabled = enabled;
         _moveDownButton.Enabled = enabled;
         _deleteButton.Enabled = enabled;

@@ -1,12 +1,12 @@
-# 有序连点器 2.0.0
+# 有序连点器 2.1.0
 
-Windows 10/11 x64 桌面连点器。按列表顺序执行点位，支持单点连击、步骤等待、循环、暂停继续、停止、云桌面相对坐标、画面稳定检测、断点恢复和执行日志。
+Windows 10/11 x64 桌面连点器。按列表顺序执行点位，支持单点连击、步骤等待、循环、暂停继续、停止、云桌面相对坐标、画面稳定检测、持久断点恢复和执行日志。2.1.0 增加单实例唤醒、后台安全角监控、平滑进度刷新、退出前安全停止，以及日志自动清理。
 
 ## 使用方式
 
 推荐安装版日常使用：
 
-- `ordered-clicker-setup-v2.0.0.exe`
+- `ordered-clicker-setup-v2.1.0.exe`
 - `有序连点器-免安装.exe`
 
 安装版把方案、草稿和日志写入 `%LocalAppData%\OrderedClicker`。免安装版把数据写入程序旁的 `OrderedClickerData`，因此程序所在目录必须可写。发行类型在编译时确定，重命名免安装 EXE 不会改变数据目录。
@@ -29,7 +29,7 @@ Windows 10/11 x64 桌面连点器。按列表顺序执行点位，支持单点�
 
 ## 方案与恢复
 
-2.0.0 使用 `.oclick` 方案格式 v4。旧版 1.x JSON 文件不能直接编辑，只能通过“迁移旧方案”单向转换；原文件不会被覆盖。
+2.1.0 使用 `.oclick` 方案格式 v4，与 2.0.0 方案保持兼容。旧版 1.x JSON 文件不能直接编辑，只能通过“迁移旧方案”单向转换；原文件不会被覆盖。
 
 “保存”只覆盖当前已绑定方案，“另存为”创建新的方案身份。如果方案被其他窗口或程序修改，普通保存会停止并要求另存，避免静默覆盖。程序会自动保存活动草稿；异常退出后下次启动可恢复，正常关闭且没有未保存修改时会清理草稿。损坏草稿会被隔离为 `.broken.json`，不会在每次启动时重复报错。
 
@@ -61,14 +61,14 @@ Windows 10/11 x64 桌面连点器。按列表顺序执行点位，支持单点�
 运行测试：
 
 ```powershell
-.\scripts\dotnet.ps1 run --project .\tests\OrderedClicker.Tests\OrderedClicker.Tests.csproj -c Release
+pwsh -File .\scripts\test.ps1 -Configuration Release
 .\tests\Installer.Tests.ps1
 ```
 
 构建未签名开发交付：
 
 ```powershell
-.\scripts\build-installer.ps1 -Version 2.0.0
+.\scripts\build-installer.ps1 -Version 2.1.0
 ```
 
 构建正式签名交付：
@@ -76,7 +76,7 @@ Windows 10/11 x64 桌面连点器。按列表顺序执行点位，支持单点�
 ```powershell
 $env:ORDERED_CLICKER_SIGNING_PASSWORD = "<证书密码>"
 .\scripts\build-installer.ps1 `
-  -Version 2.0.0 `
+  -Version 2.1.0 `
   -Release `
   -SigningCertificatePath "D:\certs\ordered-clicker.pfx"
 ```
@@ -88,7 +88,7 @@ $env:ORDERED_CLICKER_SIGNING_PASSWORD = "<证书密码>"
 最终产品目录只包含安装版 EXE、免安装 EXE、PDF 使用说明、HTML 使用说明和 SHA256SUMS.txt：
 
 ```text
-ordered-clicker-setup-v2.0.0.exe
+ordered-clicker-setup-v2.1.0.exe
 有序连点器-免安装.exe
 有序连点器-使用说明.pdf
 有序连点器-使用说明.html

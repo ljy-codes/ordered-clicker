@@ -26,7 +26,26 @@ internal static class Program
             Environment.ProcessPath ?? Application.ExecutablePath,
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             IsPortableBuild);
-        Application.Run(new MainForm(appDataPaths: dataPaths));
+        using var singleInstance = new SingleInstanceCoordinator(
+            $"OrderedClicker|{dataPaths.Root}");
+        if (!singleInstance.IsOwner)
+        {
+            singleInstance.SignalActivation();
+            return;
+        }
+
+        using var mainForm = new MainForm(appDataPaths: dataPaths);
+        _ = mainForm.Handle;
+        singleInstance.StartListening(() =>
+        {
+            if (mainForm.IsDisposed || !mainForm.IsHandleCreated)
+            {
+                return;
+            }
+
+            mainForm.BeginInvoke(mainForm.ActivateExistingInstance);
+        });
+        Application.Run(mainForm);
     }
 
     private static void ShowFatalError(Exception? exception)

@@ -1,7 +1,7 @@
 ﻿[CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = "2.0.0",
+    [string]$Version = "2.1.0",
 
     [string]$ProductDirectory = "",
 
@@ -278,9 +278,7 @@ if ($Release) {
 try {
 if (-not $SkipTests) {
     Invoke-Checked -Description "运行 .NET 自动化测试" -Command {
-        & (Join-Path $PSScriptRoot "dotnet.ps1") run `
-            --project (Join-Path $projectRoot "tests\OrderedClicker.Tests\OrderedClicker.Tests.csproj") `
-            -c Release
+        & (Join-Path $PSScriptRoot "test.ps1") -Configuration Release
     }
 
     Invoke-Checked -Description "运行安装器契约测试" -Command {

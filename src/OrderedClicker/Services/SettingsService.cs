@@ -146,10 +146,20 @@ public sealed class SettingsService
         }
 
         Directory.CreateDirectory(directory);
-        var temporary = SettingsPath + ".tmp";
-        var json = JsonSerializer.Serialize(settings, JsonOptions);
-        File.WriteAllText(temporary, json, new UTF8Encoding(false));
-        File.Move(temporary, SettingsPath, true);
-        settings.RequiresSaveAfterLoad = false;
+        var temporary = $"{SettingsPath}.{Guid.NewGuid():N}.tmp";
+        try
+        {
+            var json = JsonSerializer.Serialize(settings, JsonOptions);
+            File.WriteAllText(temporary, json, new UTF8Encoding(false));
+            File.Move(temporary, SettingsPath, true);
+            settings.RequiresSaveAfterLoad = false;
+        }
+        finally
+        {
+            if (File.Exists(temporary))
+            {
+                File.Delete(temporary);
+            }
+        }
     }
 }

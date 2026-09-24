@@ -185,7 +185,7 @@ def page_header_footer(canvas, doc) -> None:
     canvas.line(18 * mm, 14 * mm, width - 18 * mm, 14 * mm)
     canvas.setFont("GuideCN", 7.5)
     canvas.setFillColor(MUTED)
-    canvas.drawString(18 * mm, height - 10 * mm, "有序连点器 2.0.0 使用说明")
+    canvas.drawString(18 * mm, height - 10 * mm, "有序连点器 2.1.0 使用说明")
     canvas.drawRightString(width - 18 * mm, 9 * mm, f"第 {doc.page} 页")
     canvas.restoreState()
 
@@ -195,7 +195,7 @@ def build_story(style_map) -> list:
 
     story += [
         Spacer(1, 12 * mm),
-        p("有序连点器 2.0.0", style_map["title"]),
+        p("有序连点器 2.1.0", style_map["title"]),
         p(
             "Windows 10/11 x64 · 五步式工作台 · v4 .oclick 方案 · "
             "草稿恢复 · 可靠断点 · 双重停止保护",
@@ -206,7 +206,7 @@ def build_story(style_map) -> list:
         table(
             [
                 ["适用用户", "核心能力", "文档日期"],
-                ["普通桌面和云桌面用户", "有序点位、循环、稳定检测、暂停继续和日志", "2026-09-04"],
+                ["普通桌面和云桌面用户", "有序点位、循环、稳定检测、暂停继续和日志", "2026-09-24"],
             ],
             [48 * mm, 82 * mm, 42 * mm],
             style_map,
@@ -436,7 +436,7 @@ def build_story(style_map) -> list:
         table(
             [
                 ["交付文件", "用途"],
-                ["ordered-clicker-setup-v2.0.0.exe", "当前用户安装版"],
+                ["ordered-clicker-setup-v2.1.0.exe", "当前用户安装版"],
                 ["有序连点器-免安装.exe", "单文件免安装版"],
                 ["有序连点器-使用说明.pdf", "离线 PDF 说明"],
                 ["有序连点器-使用说明.html", "自包含 HTML 说明"],
@@ -458,7 +458,7 @@ def build_story(style_map) -> list:
         ),
         Spacer(1, 12 * mm),
         callout(
-            "版本：2.0.0\n文档日期：2026-09-04\n"
+            "版本：2.1.0\n文档日期：2026-09-24\n"
             "本说明与五步工作台、v4 方案、安全角和五文件交付保持一致。",
             style_map,
             GREEN,
@@ -478,9 +478,9 @@ def main() -> None:
         leftMargin=18 * mm,
         topMargin=18 * mm,
         bottomMargin=19 * mm,
-        title="有序连点器 2.0.0 使用说明",
+        title="有序连点器 2.1.0 使用说明",
         author="Ordered Clicker",
-        subject="有序连点器 2.0.0 操作指导",
+        subject="有序连点器 2.1.0 操作指导",
     )
     document.build(
         build_story(style_map),

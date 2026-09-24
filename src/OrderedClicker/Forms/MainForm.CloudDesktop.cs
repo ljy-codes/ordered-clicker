@@ -73,6 +73,7 @@ public sealed partial class MainForm
             return;
         }
 
+        CancelDelayedCapture();
         _cloudDesktopEnabledCheckBox.Checked = true;
         _captureMode = CaptureMode.CloudRegionTopLeft;
         _cloudRegionTopLeft = null;
@@ -136,6 +137,7 @@ public sealed partial class MainForm
         _cloudDesktopRegion = region;
         var filledPointCount =
             CloudDesktopCoordinateService.FillMissingRelativeCoordinates(_points, region);
+        MarkDraftDirty();
         _captureMode = CaptureMode.Idle;
         _cloudRegionTopLeft = null;
         CloseCaptureHud();

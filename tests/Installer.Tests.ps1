@@ -7,6 +7,7 @@ $buildScriptPath = Join-Path $projectRoot "scripts\build-installer.ps1"
 $publishScriptPath = Join-Path $projectRoot "scripts\publish.ps1"
 $pathSafetyPath = Join-Path $projectRoot "scripts\path-safety.ps1"
 $readmePath = Join-Path $projectRoot "README.md"
+$releaseWorkflowPath = Join-Path $projectRoot ".github\workflows\ci-release.yml"
 $script:failures = 0
 
 function Read-OptionalFile {
@@ -122,6 +123,7 @@ $buildScript = Read-OptionalFile -Path $buildScriptPath
 $publishScript = Read-OptionalFile -Path $publishScriptPath
 $pathSafety = Read-OptionalFile -Path $pathSafetyPath
 $readme = Read-OptionalFile -Path $readmePath
+$releaseWorkflow = Read-OptionalFile -Path $releaseWorkflowPath
 
 Assert-Contains -Content $installer -Expected "PrivilegesRequired=lowest" -Name "当前用户安装"
 Assert-Contains -Content $installer -Expected 'DefaultDirName={localappdata}\Programs\OrderedClicker' -Name "用户安装目录"
@@ -177,10 +179,10 @@ Assert-Contains `
     -Content $publishScript `
     -Expected '$unexpectedRuntimeFiles = @(' `
     -Name "严格模式下稳定检查发布文件"
-Assert-Contains -Content $publishScript -Expected '[string]$Version = "2.0.0"' -Name "发布脚本接收版本"
-Assert-Contains -Content $project -Expected "<Version>2.0.0</Version>" -Name "项目版本为 2.0.0"
-Assert-Contains -Content $installer -Expected '#define AppVersion "2.0.0"' -Name "安装器默认版本为 2.0.0"
-Assert-Contains -Content $buildScript -Expected '[string]$Version = "2.0.0"' -Name "构建脚本默认版本为 2.0.0"
+Assert-Contains -Content $publishScript -Expected '[string]$Version = "2.1.0"' -Name "发布脚本接收版本"
+Assert-Contains -Content $project -Expected "<Version>2.1.0</Version>" -Name "项目版本为 2.1.0"
+Assert-Contains -Content $installer -Expected '#define AppVersion "2.1.0"' -Name "安装器默认版本为 2.1.0"
+Assert-Contains -Content $buildScript -Expected '[string]$Version = "2.1.0"' -Name "构建脚本默认版本为 2.1.0"
 Assert-Contains -Content $buildScript -Expected '[switch]$Release' -Name "发布构建显式区分签名模式"
 Assert-Contains -Content $buildScript -Expected '[string]$SigningCertificatePath' -Name "发布构建接收签名证书"
 Assert-Contains -Content $buildScript -Expected 'ORDERED_CLICKER_SIGNING_PASSWORD' -Name "签名密码从环境变量读取"
@@ -198,6 +200,10 @@ Assert-Contains -Content $publishScript -Expected "Assert-SafeRecursivePath" -Na
 Assert-Contains -Content $pathSafety -Expected "[System.IO.FileAttributes]::ReparsePoint" -Name "拒绝重解析点"
 Assert-Contains -Content $readme -Expected "PowerShell 7" -Name "构建依赖说明"
 Assert-Contains -Content $readme -Expected "最终产品目录只包含" -Name "最小交付说明"
+Assert-Contains -Content $releaseWorkflow -Expected "scripts/test.ps1" -Name "CI 使用统一测试入口"
+Assert-Contains -Content $releaseWorkflow -Expected "refs/tags/v" -Name "版本标签触发发布"
+Assert-Contains -Content $releaseWorkflow -Expected "JRSoftware.InnoSetup" -Name "发布安装 Inno Setup 7"
+Assert-Contains -Content $releaseWorkflow -Expected "softprops/action-gh-release@v2" -Name "标签创建 GitHub Release"
 Assert-Contains `
     -Content $buildScript `
     -Expected '$deliveryCommitted' `

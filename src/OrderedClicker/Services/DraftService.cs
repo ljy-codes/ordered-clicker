@@ -44,7 +44,7 @@ public sealed class DraftService
         var directory = Path.GetDirectoryName(DraftPath)
                         ?? throw new InvalidOperationException("草稿路径无效。");
         Directory.CreateDirectory(directory);
-        var temporary = DraftPath + ".tmp";
+        var temporary = $"{DraftPath}.{Guid.NewGuid():N}.tmp";
         try
         {
             File.WriteAllText(
