@@ -66,14 +66,93 @@ jobs:
           ./scripts/build-installer.ps1 `
             -Version $version `
             -ProductDirectory "${{ runner.temp }}\ordered-clicker-product"
+      - name: Stage release assets
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart("v")
+          $productDirectory = "${{ runner.temp }}\ordered-clicker-product"
+          $releaseDirectory = "${{ runner.temp }}\ordered-clicker-release"
+
+          if (Test-Path -LiteralPath $releaseDirectory) {
+            Remove-Item -LiteralPath $releaseDirectory -Recurse -Force
+          }
+
+          New-Item -ItemType Directory -Path $releaseDirectory | Out-Null
+          $assets = @(
+            @{
+              Source = Join-Path $productDirectory "ordered-clicker-setup-v$version.exe"
+              Destination = "ordered-clicker-setup-v$version.exe"
+            },
+            @{
+              Source = Join-Path $productDirectory "有序连点器-免安装.exe"
+              Destination = "ordered-clicker-portable-v$version.exe"
+            },
+            @{
+              Source = Join-Path $productDirectory "有序连点器-使用说明.pdf"
+              Destination = "ordered-clicker-user-guide-v$version.pdf"
+            },
+            @{
+              Source = Join-Path $productDirectory "有序连点器-使用说明.html"
+              Destination = "ordered-clicker-user-guide-v$version.html"
+            },
+            @{
+              Source = Join-Path $PWD "publish\packages\ordered-clicker-portable-v$version.zip"
+              Destination = "ordered-clicker-portable-v$version.zip"
+            }
+          )
+
+          foreach ($asset in $assets) {
+            if (-not (Test-Path -LiteralPath $asset.Source -PathType Leaf)) {
+              throw "Release asset is missing: $($asset.Source)"
+            }
+
+            Copy-Item `
+              -LiteralPath $asset.Source `
+              -Destination (Join-Path $releaseDirectory $asset.Destination)
+          }
+
+          $hashLines = foreach ($asset in $assets) {
+            $releaseAssetPath = Join-Path $releaseDirectory $asset.Destination
+            $hash = (Get-FileHash -LiteralPath $releaseAssetPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($asset.Destination)"
+          }
+          $hashLines | Set-Content `
+            -LiteralPath (Join-Path $releaseDirectory "SHA256SUMS.txt") `
+            -Encoding utf8NoBOM
+      - name: Clear existing release assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept = "application/vnd.github+json"
+            "X-GitHub-Api-Version" = "2022-11-28"
+            "User-Agent" = "ordered-clicker-release"
+          }
+          $releaseUrl = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/tags/$env:GITHUB_REF_NAME"
+          $release = Invoke-RestMethod `
+            -Method Get `
+            -Uri $releaseUrl `
+            -Headers $headers `
+            -SkipHttpErrorCheck `
+            -StatusCodeVariable statusCode
+
+          if ($statusCode -eq 404) {
+            return
+          }
+          if ($statusCode -ne 200) {
+            throw "Unable to query existing release assets. HTTP status: $statusCode"
+          }
+
+          foreach ($asset in $release.assets) {
+            $assetUrl = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/assets/$($asset.id)"
+            Invoke-RestMethod -Method Delete -Uri $assetUrl -Headers $headers | Out-Null
+          }
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
+          fail_on_unmatched_files: true
           files: |
-            ${{ runner.temp }}/ordered-clicker-product/ordered-clicker-setup-*.exe
-            ${{ runner.temp }}/ordered-clicker-product/有序连点器-免安装.exe
-            ${{ runner.temp }}/ordered-clicker-product/有序连点器-使用说明.pdf
-            ${{ runner.temp }}/ordered-clicker-product/有序连点器-使用说明.html
-            ${{ runner.temp }}/ordered-clicker-product/SHA256SUMS.txt
-            publish/packages/ordered-clicker-portable-*.zip
+            ${{ runner.temp }}/ordered-clicker-release/*

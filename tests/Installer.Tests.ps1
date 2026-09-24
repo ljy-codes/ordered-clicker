@@ -207,6 +207,34 @@ Assert-Contains -Content $releaseWorkflow -Expected "refs/tags/v" -Name "版本�
 Assert-Contains -Content $releaseWorkflow -Expected "JRSoftware.InnoSetup.7" -Name "发布安装 Inno Setup 7"
 Assert-Contains -Content $releaseWorkflow -Expected "softprops/action-gh-release@v2" -Name "标签创建 GitHub Release"
 Assert-Contains -Content $releaseWorkflow -Expected 'PYTHONUTF8: "1"' -Name "文档构建强制 UTF-8"
+Assert-Contains `
+    -Content $releaseWorkflow `
+    -Expected 'ordered-clicker-portable-v$version.exe' `
+    -Name "GitHub Release 使用稳定的英文免安装文件名"
+Assert-Contains `
+    -Content $releaseWorkflow `
+    -Expected 'ordered-clicker-user-guide-v$version.pdf' `
+    -Name "GitHub Release 使用稳定的英文 PDF 文件名"
+Assert-Contains `
+    -Content $releaseWorkflow `
+    -Expected 'ordered-clicker-user-guide-v$version.html' `
+    -Name "GitHub Release 使用稳定的英文 HTML 文件名"
+Assert-Contains `
+    -Content $releaseWorkflow `
+    -Expected 'Invoke-RestMethod -Method Delete' `
+    -Name "重新发布前删除同标签旧附件"
+Assert-Contains `
+    -Content $releaseWorkflow `
+    -Expected 'ordered-clicker-release' `
+    -Name "GitHub Release 使用独立附件暂存目录"
+Assert-Contains `
+    -Content $releaseWorkflow `
+    -Expected 'fail_on_unmatched_files: true' `
+    -Name "Release 附件缺失时立即失败"
+Assert-NotContains `
+    -Content $releaseWorkflow `
+    -Unexpected '${{ runner.temp }}/ordered-clicker-product/有序连点器' `
+    -Name "上传动作不直接处理中文产品路径"
 Assert-Contains -Content $pdfGuideScript -Expected 'UnicodeCIDFont' -Name "PDF 支持无本机中文字体回退"
 Assert-Contains -Content $pdfGuideScript -Expected '"STSong-Light"' -Name "PDF 使用内置中文 CID 字体"
 Assert-Contains `
