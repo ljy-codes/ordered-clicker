@@ -204,7 +204,7 @@ Assert-Contains -Content $readme -Expected "PowerShell 7" -Name "构建依赖说
 Assert-Contains -Content $readme -Expected "最终产品目录只包含" -Name "最小交付说明"
 Assert-Contains -Content $releaseWorkflow -Expected "scripts/test.ps1" -Name "CI 使用统一测试入口"
 Assert-Contains -Content $releaseWorkflow -Expected "refs/tags/v" -Name "版本标签触发发布"
-Assert-Contains -Content $releaseWorkflow -Expected "JRSoftware.InnoSetup" -Name "发布安装 Inno Setup 7"
+Assert-Contains -Content $releaseWorkflow -Expected "JRSoftware.InnoSetup.7" -Name "发布安装 Inno Setup 7"
 Assert-Contains -Content $releaseWorkflow -Expected "softprops/action-gh-release@v2" -Name "标签创建 GitHub Release"
 Assert-Contains -Content $releaseWorkflow -Expected 'PYTHONUTF8: "1"' -Name "文档构建强制 UTF-8"
 Assert-Contains -Content $pdfGuideScript -Expected 'UnicodeCIDFont' -Name "PDF 支持无本机中文字体回退"

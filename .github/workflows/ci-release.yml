@@ -57,7 +57,7 @@ jobs:
       - name: Install Inno Setup 7
         shell: pwsh
         run: >-
-          winget install --id JRSoftware.InnoSetup --exact --silent
+          winget install --id JRSoftware.InnoSetup.7 --exact --silent
           --accept-package-agreements --accept-source-agreements
       - name: Build release packages
         shell: pwsh
