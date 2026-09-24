@@ -8,6 +8,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
     Image,
@@ -33,13 +34,18 @@ TEXT = colors.HexColor("#182230")
 MUTED = colors.HexColor("#58677A")
 SURFACE = colors.HexColor("#F3F6FA")
 LINE = colors.HexColor("#CCD5E0")
+GUIDE_FONT_NAME = "GuideCN"
 
 
 def register_font() -> None:
+    global GUIDE_FONT_NAME
     font_path = Path("C:/Windows/Fonts/simhei.ttf")
-    if not font_path.is_file():
-        raise FileNotFoundError(f"未找到中文字体: {font_path}")
-    pdfmetrics.registerFont(TTFont("GuideCN", str(font_path)))
+    if font_path.is_file():
+        pdfmetrics.registerFont(TTFont(GUIDE_FONT_NAME, str(font_path)))
+        return
+
+    GUIDE_FONT_NAME = "STSong-Light"
+    pdfmetrics.registerFont(UnicodeCIDFont(GUIDE_FONT_NAME))
 
 
 def styles() -> dict[str, ParagraphStyle]:
@@ -48,7 +54,7 @@ def styles() -> dict[str, ParagraphStyle]:
         "title": ParagraphStyle(
             "TitleCN",
             parent=base["Title"],
-            fontName="GuideCN",
+            fontName=GUIDE_FONT_NAME,
             fontSize=28,
             leading=38,
             textColor=TEXT,
@@ -56,7 +62,7 @@ def styles() -> dict[str, ParagraphStyle]:
         ),
         "subtitle": ParagraphStyle(
             "SubtitleCN",
-            fontName="GuideCN",
+            fontName=GUIDE_FONT_NAME,
             fontSize=11,
             leading=19,
             textColor=MUTED,
@@ -64,7 +70,7 @@ def styles() -> dict[str, ParagraphStyle]:
         ),
         "section": ParagraphStyle(
             "SectionCN",
-            fontName="GuideCN",
+            fontName=GUIDE_FONT_NAME,
             fontSize=21,
             leading=29,
             textColor=TEXT,
@@ -72,7 +78,7 @@ def styles() -> dict[str, ParagraphStyle]:
         ),
         "heading": ParagraphStyle(
             "HeadingCN",
-            fontName="GuideCN",
+            fontName=GUIDE_FONT_NAME,
             fontSize=13,
             leading=20,
             textColor=CYAN,
@@ -81,7 +87,7 @@ def styles() -> dict[str, ParagraphStyle]:
         ),
         "body": ParagraphStyle(
             "BodyCN",
-            fontName="GuideCN",
+            fontName=GUIDE_FONT_NAME,
             fontSize=9.5,
             leading=16,
             textColor=TEXT,
@@ -89,7 +95,7 @@ def styles() -> dict[str, ParagraphStyle]:
         ),
         "bullet": ParagraphStyle(
             "BulletCN",
-            fontName="GuideCN",
+            fontName=GUIDE_FONT_NAME,
             fontSize=9.3,
             leading=15.5,
             textColor=TEXT,
@@ -99,14 +105,14 @@ def styles() -> dict[str, ParagraphStyle]:
         ),
         "small": ParagraphStyle(
             "SmallCN",
-            fontName="GuideCN",
+            fontName=GUIDE_FONT_NAME,
             fontSize=8,
             leading=13,
             textColor=MUTED,
         ),
         "center": ParagraphStyle(
             "CenterCN",
-            fontName="GuideCN",
+            fontName=GUIDE_FONT_NAME,
             fontSize=9.5,
             leading=16,
             textColor=TEXT,
@@ -183,7 +189,7 @@ def page_header_footer(canvas, doc) -> None:
     canvas.setStrokeColor(LINE)
     canvas.line(18 * mm, height - 13 * mm, width - 18 * mm, height - 13 * mm)
     canvas.line(18 * mm, 14 * mm, width - 18 * mm, 14 * mm)
-    canvas.setFont("GuideCN", 7.5)
+    canvas.setFont(GUIDE_FONT_NAME, 7.5)
     canvas.setFillColor(MUTED)
     canvas.drawString(18 * mm, height - 10 * mm, "有序连点器 2.1.0 使用说明")
     canvas.drawRightString(width - 18 * mm, 9 * mm, f"第 {doc.page} 页")

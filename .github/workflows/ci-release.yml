@@ -35,6 +35,8 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: verify
     runs-on: windows-latest
+    env:
+      PYTHONUTF8: "1"
     permissions:
       contents: write
     steps:

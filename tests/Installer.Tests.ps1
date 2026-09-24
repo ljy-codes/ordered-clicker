@@ -8,6 +8,7 @@ $publishScriptPath = Join-Path $projectRoot "scripts\publish.ps1"
 $pathSafetyPath = Join-Path $projectRoot "scripts\path-safety.ps1"
 $readmePath = Join-Path $projectRoot "README.md"
 $releaseWorkflowPath = Join-Path $projectRoot ".github\workflows\ci-release.yml"
+$pdfGuideScriptPath = Join-Path $projectRoot "scripts\guide\build_pdf_guide.py"
 $script:failures = 0
 
 function Read-OptionalFile {
@@ -124,6 +125,7 @@ $publishScript = Read-OptionalFile -Path $publishScriptPath
 $pathSafety = Read-OptionalFile -Path $pathSafetyPath
 $readme = Read-OptionalFile -Path $readmePath
 $releaseWorkflow = Read-OptionalFile -Path $releaseWorkflowPath
+$pdfGuideScript = Read-OptionalFile -Path $pdfGuideScriptPath
 
 Assert-Contains -Content $installer -Expected "PrivilegesRequired=lowest" -Name "当前用户安装"
 Assert-Contains -Content $installer -Expected 'DefaultDirName={localappdata}\Programs\OrderedClicker' -Name "用户安装目录"
@@ -204,6 +206,9 @@ Assert-Contains -Content $releaseWorkflow -Expected "scripts/test.ps1" -Name "CI
 Assert-Contains -Content $releaseWorkflow -Expected "refs/tags/v" -Name "版本标签触发发布"
 Assert-Contains -Content $releaseWorkflow -Expected "JRSoftware.InnoSetup" -Name "发布安装 Inno Setup 7"
 Assert-Contains -Content $releaseWorkflow -Expected "softprops/action-gh-release@v2" -Name "标签创建 GitHub Release"
+Assert-Contains -Content $releaseWorkflow -Expected 'PYTHONUTF8: "1"' -Name "文档构建强制 UTF-8"
+Assert-Contains -Content $pdfGuideScript -Expected 'UnicodeCIDFont' -Name "PDF 支持无本机中文字体回退"
+Assert-Contains -Content $pdfGuideScript -Expected '"STSong-Light"' -Name "PDF 使用内置中文 CID 字体"
 Assert-Contains `
     -Content $buildScript `
     -Expected '$deliveryCommitted' `
