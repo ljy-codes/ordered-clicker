@@ -39,3 +39,10 @@ license-inventory*.csv
 .env
 .env.*
 !.env.example
+
+# Local macOS release and delivery artifacts
+releases/
+交付产品/
+artifacts/macos/
+
+**/__pycache__/

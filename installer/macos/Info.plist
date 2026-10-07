@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleName</key><string>有序连点器</string>
+<key>CFBundleDisplayName</key><string>有序连点器</string>
+<key>CFBundleIdentifier</key><string>io.github.ljy-codes.ordered-clicker</string>
+<key>CFBundleExecutable</key><string>OrderedClicker.Mac</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleShortVersionString</key><string>2.1.0</string>
+<key>CFBundleVersion</key><string>2101</string>
+<key>CFBundleIconFile</key><string>OrderedClicker.icns</string>
+<key>LSMinimumSystemVersion</key><string>13.0</string>
+<key>NSHighResolutionCapable</key><true/>
+<key>NSSupportsAutomaticGraphicsSwitching</key><true/>
+<key>NSPrincipalClass</key><string>NSApplication</string>
+<key>NSScreenCaptureUsageDescription</key><string>用于检测指定桌面区域是否稳定，在页面加载完成后继续点击。</string>
+<key>NSHumanReadableCopyright</key><string>Ordered Clicker · ljy-codes</string>
+</dict></plist>

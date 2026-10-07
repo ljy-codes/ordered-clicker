@@ -172,26 +172,37 @@ internal static class ProfileServiceTests
             })
             .ToList();
         using var targetCreated = new ManualResetEventSlim();
-        using var watcher = new FileSystemWatcher(directory.Path, "*.tmp")
+        using var observing = new CancellationTokenSource();
+        using var ready = new ManualResetEventSlim();
+        // macOS FileSystemWatcher coalesces events after the rename; observe the
+        // temp file directly so the concurrent creation really precedes commit.
+        var creator = new Thread(() =>
         {
-            EnableRaisingEvents = true
-        };
-        watcher.Created += (_, _) =>
+            ready.Set();
+            while (!observing.IsCancellationRequested)
+            {
+                if (Directory.EnumerateFiles(directory.Path, "*.tmp").Any())
+                {
+                    File.WriteAllText(destination, "external-create");
+                    targetCreated.Set();
+                    return;
+                }
+                Thread.Yield();
+            }
+        }) { IsBackground = true };
+        creator.Start();
+        ready.Wait();
+        try
         {
-            try
-            {
-                File.WriteAllText(destination, "external-create");
-                targetCreated.Set();
-            }
-            catch (IOException)
-            {
-                // A duplicate watcher notification may race with the first handler.
-            }
-        };
-
-        TestAssert.Throws<IOException>(
-            () => service.Save(profile, destination),
-            "禁止覆盖时不应替换保存期间由其他程序创建的目标文件");
+            TestAssert.Throws<IOException>(
+                () => service.Save(profile, destination),
+                "禁止覆盖时不应替换保存期间由其他程序创建的目标文件");
+        }
+        finally
+        {
+            observing.Cancel();
+            creator.Join();
+        }
         TestAssert.True(targetCreated.Wait(TimeSpan.FromSeconds(2)),
             "测试应在提交前模拟外部创建目标文件");
         TestAssert.Equal("external-create", File.ReadAllText(destination),

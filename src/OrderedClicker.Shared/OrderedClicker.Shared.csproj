@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Version>2.1.0</Version>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../OrderedClicker/Core/*.cs" Link="Core/%(Filename)%(Extension)" />
+    <Compile Include="../OrderedClicker/Models/*.cs" Link="Models/%(Filename)%(Extension)" />
+    <Compile Include="../OrderedClicker/Theming/*.cs" Link="Theming/%(Filename)%(Extension)" />
+    <Compile Include="../OrderedClicker/Services/*.cs"
+      Exclude="../OrderedClicker/Services/Windows*.cs;../OrderedClicker/Services/MonitorService.cs;../OrderedClicker/Services/HotKeyService.cs;../OrderedClicker/Services/SingleInstanceCoordinator.cs"
+      Link="Services/%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/OrderedClicker.Shared/OrderedClicker.Shared.csproj"/>
+    <Compile Include="../OrderedClicker.Tests/*.cs" Exclude="../OrderedClicker.Tests/Program.cs;../OrderedClicker.Tests/UiSmokeTests.cs;../OrderedClicker.Tests/SingleInstanceCoordinatorTests.cs" Link="Existing/%(Filename)%(Extension)"/>
+    <Compile Include="../../src/OrderedClicker.Mac/Platform/MacNative.cs" Link="MacNative.cs"/>
+    <Compile Include="../../src/OrderedClicker.Mac/Platform/MacPlanValidation.cs" Link="MacPlanValidation.cs"/>
+    <Compile Include="../../src/OrderedClicker.Mac/Platform/MacInstance.cs" Link="MacInstance.cs"/>
+  </ItemGroup>
+</Project>

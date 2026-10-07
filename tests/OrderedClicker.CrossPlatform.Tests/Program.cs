@@ -1,0 +1,122 @@
+namespace OrderedClicker.Tests;
+
+internal static class Program
+{
+    [STAThread]
+    private static async Task<int> Main(string[] args)
+    {
+        var tests = new (string Name, Func<Task> Run)[]
+        {
+            ("ProfileValidator", () =>
+            {
+                ProfileValidatorTests.Run();
+                return Task.CompletedTask;
+            }),
+            ("CloudDesktopCoordinateService", () =>
+            {
+                CloudDesktopCoordinateServiceTests.Run();
+                return Task.CompletedTask;
+            }),
+            ("VirtualScreenCoordinateService", () =>
+            {
+                VirtualScreenCoordinateServiceTests.Run();
+                return Task.CompletedTask;
+            }),
+            ("ExecutionPlanService", () =>
+            {
+                ExecutionPlanServiceTests.Run();
+                return Task.CompletedTask;
+            }),
+            ("ExecutionPlanSafety", () =>
+            {
+                ExecutionPlanSafetyTests.Run();
+                return Task.CompletedTask;
+            }),
+            ("PointTimingService", () =>
+            {
+                PointTimingServiceTests.Run();
+                return Task.CompletedTask;
+            }),
+            ("HotKeyBindingService", () =>
+            {
+                HotKeyBindingServiceTests.Run();
+                return Task.CompletedTask;
+            }),
+            ("ClickExecutionEngine", ClickExecutionEngineTests.RunAsync),
+            ("ScreenStabilityDetector", ScreenStabilityDetectorTests.RunAsync),
+            ("ExecutionReliabilityService", () =>
+            {
+                ExecutionReliabilityServiceTests.Run();
+                return Task.CompletedTask;
+            }),
+            ("ExecutionCheckpointService", () =>
+            {
+                ExecutionCheckpointServiceTests.Run();
+                return Task.CompletedTask;
+            }),
+            ("RuntimeCoordinator", RuntimeCoordinatorTests.RunAsync),
+            ("LogRetentionService", () =>
+            {
+                LogRetentionServiceTests.Run();
+                return Task.CompletedTask;
+            }),
+            ("ProfileService", () =>
+            {
+                ProfileServiceTests.Run();
+                return Task.CompletedTask;
+            }),
+            ("AppDataPaths", () =>
+            {
+                AppDataPathsTests.Run();
+                return Task.CompletedTask;
+            }),
+            ("DraftService", () =>
+            {
+                DraftServiceTests.Run();
+                return Task.CompletedTask;
+            }),
+            ("LegacyProfileMigration", () =>
+            {
+                LegacyProfileMigrationServiceTests.Run();
+                return Task.CompletedTask;
+            }),
+            ("DiagnosticAndSettings", () =>
+            {
+                DiagnosticAndSettingsTests.Run();
+                return Task.CompletedTask;
+            }),
+            ("ThemeSettings", () =>
+            {
+                ThemeSettingsTests.Run();
+                return Task.CompletedTask;
+            }),
+            ("MacContracts", MacContractTests.RunAsync)
+        };
+
+        var failed = 0;
+        foreach (var test in tests)
+        {
+            try
+            {
+                await test.Run();
+                Console.WriteLine($"PASS {test.Name}");
+            }
+            catch (Exception exception)
+            {
+                failed++;
+                var failure = exception;
+                while (failure.InnerException is not null)
+                {
+                    failure = failure.InnerException;
+                }
+
+                Console.Error.WriteLine(
+                    $"FAIL {test.Name}: {failure.Message}{Environment.NewLine}"
+                    + failure.StackTrace);
+            }
+        }
+
+        Console.WriteLine($"{tests.Length - failed}/{tests.Length} tests passed");
+        return failed == 0 ? 0 : 1;
+    }
+}

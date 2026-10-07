@@ -443,7 +443,9 @@ public sealed class ProfileService
 
                     if (createBackup)
                     {
-                        File.Copy(capturedPath, destination + ".bak", true);
+                        capturedLease.Position = 0;
+                        using var backup = new FileStream(destination + ".bak", FileMode.Create, FileAccess.Write, FileShare.None);
+                        capturedLease.CopyTo(backup);
                     }
 
                     if (File.Exists(destination))
@@ -485,7 +487,7 @@ public sealed class ProfileService
                 capturedPath,
                 FileMode.Open,
                 FileAccess.Read,
-                FileShare.Read);
+                OperatingSystem.IsWindows() ? FileShare.Read : FileShare.None);
         }
         catch (Exception exception) when (
             exception is IOException or UnauthorizedAccessException)

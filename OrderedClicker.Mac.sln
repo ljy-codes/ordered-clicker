@@ -1,0 +1,50 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{8874DB5E-27FC-495A-9C7A-C2F003D094CF}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OrderedClicker.Shared", "src\OrderedClicker.Shared\OrderedClicker.Shared.csproj", "{FDF403C6-1A18-4DA6-9D91-48007E7FB3B3}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OrderedClicker.Mac", "src\OrderedClicker.Mac\OrderedClicker.Mac.csproj", "{104EC854-D164-4425-9A6E-425022C4D740}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0C1D3CD0-B338-4F81-B10F-9C2BB097DB42}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OrderedClicker.CrossPlatform.Tests", "tests\OrderedClicker.CrossPlatform.Tests\OrderedClicker.CrossPlatform.Tests.csproj", "{EB6C0A10-AA6A-4F93-932B-E8FC8CCAF7A2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OrderedClicker.Mac.UiTests", "tests\OrderedClicker.Mac.UiTests\OrderedClicker.Mac.UiTests.csproj", "{171969CF-F376-43CA-A0FE-FE7066DAFB00}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{FDF403C6-1A18-4DA6-9D91-48007E7FB3B3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FDF403C6-1A18-4DA6-9D91-48007E7FB3B3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FDF403C6-1A18-4DA6-9D91-48007E7FB3B3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FDF403C6-1A18-4DA6-9D91-48007E7FB3B3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{104EC854-D164-4425-9A6E-425022C4D740}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{104EC854-D164-4425-9A6E-425022C4D740}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{104EC854-D164-4425-9A6E-425022C4D740}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{104EC854-D164-4425-9A6E-425022C4D740}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EB6C0A10-AA6A-4F93-932B-E8FC8CCAF7A2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EB6C0A10-AA6A-4F93-932B-E8FC8CCAF7A2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EB6C0A10-AA6A-4F93-932B-E8FC8CCAF7A2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EB6C0A10-AA6A-4F93-932B-E8FC8CCAF7A2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{171969CF-F376-43CA-A0FE-FE7066DAFB00}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{171969CF-F376-43CA-A0FE-FE7066DAFB00}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{171969CF-F376-43CA-A0FE-FE7066DAFB00}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{171969CF-F376-43CA-A0FE-FE7066DAFB00}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{FDF403C6-1A18-4DA6-9D91-48007E7FB3B3} = {8874DB5E-27FC-495A-9C7A-C2F003D094CF}
+		{104EC854-D164-4425-9A6E-425022C4D740} = {8874DB5E-27FC-495A-9C7A-C2F003D094CF}
+		{EB6C0A10-AA6A-4F93-932B-E8FC8CCAF7A2} = {0C1D3CD0-B338-4F81-B10F-9C2BB097DB42}
+		{171969CF-F376-43CA-A0FE-FE7066DAFB00} = {0C1D3CD0-B338-4F81-B10F-9C2BB097DB42}
+	EndGlobalSection
+EndGlobal

@@ -51,13 +51,12 @@ internal static class DraftServiceTests
                    FileAccess.Read,
                    FileShare.None))
         {
-            TestAssert.Throws<UnauthorizedAccessException>(
-                () => service.Save(new DraftEnvelope(
-                    new ClickProfile { Name = "新草稿" },
-                    null,
-                    null,
-                    DateTime.UtcNow)),
-                "目标文件被占用时保存应失败");
+            Action save = () => service.Save(new DraftEnvelope(
+                new ClickProfile { Name = "新草稿" }, null, null, DateTime.UtcNow));
+            if (OperatingSystem.IsWindows())
+                TestAssert.Throws<UnauthorizedAccessException>(save, "目标文件被占用时保存应失败");
+            else
+                TestAssert.Throws<IOException>(save, "目标文件被占用时保存应失败");
         }
 
         TestAssert.Equal("旧草稿", service.Load()!.Profile.Name,

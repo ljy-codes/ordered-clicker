@@ -47,6 +47,11 @@ public sealed class DraftService
         var temporary = $"{DraftPath}.{Guid.NewGuid():N}.tmp";
         try
         {
+            // POSIX permits replacing an open pathname. Check the existing file's
+            // advisory share lock before replacing it, preserving locked drafts.
+            using var existing = !OperatingSystem.IsWindows() && File.Exists(DraftPath)
+                ? new FileStream(DraftPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete)
+                : null;
             File.WriteAllText(
                 temporary,
                 JsonSerializer.Serialize(envelope, JsonOptions),

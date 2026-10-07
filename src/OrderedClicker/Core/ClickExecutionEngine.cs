@@ -20,6 +20,7 @@ public sealed class ClickExecutionEngine
         _stabilityDetector = stabilityDetector;
     }
 
+#if WINDOWS
     public async Task ExecuteAsync(
         ClickProfile profile,
         AsyncPauseGate pauseGate,
@@ -47,6 +48,8 @@ public sealed class ClickExecutionEngine
             throw new InvalidOperationException(result.Message);
         }
     }
+
+#endif
 
     public async Task<ExecutionResult> ExecuteAsync(
         ExecutionPlan plan,
