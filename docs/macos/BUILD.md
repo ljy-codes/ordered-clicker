@@ -39,7 +39,7 @@ bash scripts/build-macos.sh
 
 ## 验收
 
-自动测试覆盖原有 19 组非 WinForms 功能和 Mac 坐标 / 安全角 / 文件锁约定，另有五步导航、保存、循环输入和保存冲突的界面行为测试。原有 Windows UI 和 Windows 单实例测试保留在 Windows CI。GitHub CI 对 Apple Silicon 和 Intel 运行器执行共享回归，双架构构建后由一个发布任务汇总附件，避免互相删除；默认建立草稿 Release。
+自动测试覆盖原有 19 组非 WinForms 功能和 Mac 坐标 / 安全角 / 文件锁约定，另有五步导航、保存、循环输入和保存冲突的界面行为测试。原有 Windows UI 和 Windows 单实例测试保留在 Windows CI。随附的自动化配置可对 Apple Silicon 和 Intel 运行器执行共享回归，双架构构建后由一个发布任务汇总附件，避免互相删除；默认建立草稿 Release。当前 GitHub 凭据缺少 workflow 写权限，该配置以 Release 附件 `ordered-clicker-ci-release.yml` 提供，尚未替换仓库的 Windows 工作流。
 
 发布前必须在对应芯片上检查：
 
