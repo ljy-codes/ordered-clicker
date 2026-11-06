@@ -131,9 +131,27 @@ limits are recorded in `docs/test.md`.
 
 ## Publication Follow-Up
 
-The feature commit is `ec3216b` and tag `v2.2.0`. Main CI passed. The first
-tag-release build passed application tests but exposed strict-mode XML
-adaptation in the installer test. The follow-up uses XPath and enables
-strict mode in the test itself; the full local packaging entry re-ran
-Windows 23/23 and all installer contracts successfully. Publish verified
-local artifacts; retain the original tag and unchanged product sources.
+Publication completed on 2026-11-06 at 13:44 (Asia/Shanghai). The feature
+commit is `ec3216b` and tag `v2.2.0`; the tag target remains unchanged.
+The first main CI passed. The first tag-release build passed application
+tests but failed on strict-mode XML adaptation in the installer test.
+Follow-up commit `f1cd4f6` uses XPath and enables strict mode in the test
+itself; main CI `42169531588` passed. The full local packaging entry
+re-ran Windows 23/23 and all installer contracts successfully. Product
+sources, installer, scripts, workflow and README match the original tag.
+
+Verified local artifacts were published in GitHub Release `436136986`,
+`v2.2.0`, as the latest non-draft, non-prerelease version. All six assets
+passed GitHub size/digest checks and unauthenticated public download
+SHA-256 verification. The downloaded checksum manifest passed 5/5; the
+four product files match the delivery directory, and the ZIP executable
+matches the delivered portable executable. The initial manual upload
+command stopped on a nested-array count check; the API returned six
+complete assets. Reading the release object's asset property avoided the
+wrapper, and publication completed without re-uploading or deleting assets.
+The original failed tag CI is retained as failed; this release was
+published from the fully verified local build.
+
+Removed two publication staging/download directories and one disposable
+CI log after validation: 13 files, 291,586,869 bytes. Tests, source,
+delivery files and persistent evidence remain; see `docs/test.md`.

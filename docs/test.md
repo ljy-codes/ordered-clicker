@@ -165,3 +165,17 @@ Windows 静态复审额外发现并修复：移动容差内的实际落点可能
 - 失败原因为测试脚本使用 `$macPlist.plist.dict` 读取 XML。plist 文档类型与根元素同名，PowerShell XML 属性适配在父脚本严格模式下触发 `dict` 不存在；已用 `Set-StrictMode -Version Latest; & ./tests/Installer.Tests.ps1` 本机复现，不属于应用执行失败。
 - `tests/Installer.Tests.ps1` 改用 XPath `/plist/dict/*`，并固定启用严格模式，避免独立运行和打包内运行的验收条件不同。修复后完整打包入口已再次通过 Windows 23/23 与全部安装器契约。
 - 发布采用本机完整验证成品补发；功能标签保持原指向。后续提交只包含安装器测试与验收记录，不修改标签对应的产品代码或版本。
+
+### 最终发布验收
+
+2026-11-06 13:44（Asia/Shanghai）完成本机交付与 GitHub 公开附件核对：
+
+- 严格模式修复提交 `f1cd4f62574bb52b20a216f75593425fac3b0128` 的主分支 CI `42169531588` 为 `completed/success`。最终打包使用完整入口 `pwsh -NoProfile -File scripts/build-installer.ps1 -Version 2.2.0 -ProductDirectory "D:\专用工具\连点器\交付产品"`，没有 `-SkipTests`；Windows 23/23 和安装器契约均通过。
+- GitHub Release ID `436136986`、标签 `v2.2.0` 已公开，匿名查询 `releases/latest` 返回本版本，`draft=false`、`prerelease=false`，正文与 `docs/release-notes-2.2.0.md` 一致。
+- 六个附件为 `ordered-clicker-portable-v2.2.0.exe`、`ordered-clicker-portable-v2.2.0.zip`、`ordered-clicker-setup-v2.2.0.exe`、`ordered-clicker-user-guide-v2.2.0.html`、`ordered-clicker-user-guide-v2.2.0.pdf`、`SHA256SUMS.txt`。上传响应及最终 API 返回的状态、大小、SHA-256 digest 均与本机暂存一致。
+- 从公开下载地址匿名下载全部六个附件，逐个 SHA-256 与上传源一致；下载清单中的五项文件哈希全部通过。公开 ZIP 仅包含 `有序连点器-免安装.exe`，内容哈希与交付目录的免安装版一致。
+- 交付目录保留五文件布局；安装版、免安装版、HTML、PDF 均与对应公开附件一致。免安装版文件版本为 `2.2.0.0`，产品版本为 `2.2.0`。
+- 本次手动上传命令曾因 `@(Invoke-RestMethod .../assets)` 产生嵌套数组而将六个附件误计为一个，停止在公开之前。已复现外层数量为 1、首项类型 `System.Object[]`、展开数量为 6；改用 Release 对象的 `assets` 属性逐项复核后公开，没有重传或删除附件。这是本轮一次性发布命令的问题，未修改产品或已验收的发布脚本。
+- 远端标签仍指向功能提交 `ec3216b8134275e78bf28c9c7273f1c87d9f83cc`；`git diff --exit-code v2.2.0 HEAD -- src installer scripts .github README.md` 通过。标签 CI `42169024265` 保持失败记录，本次采用本机完整验证成品补发，没有将失败流程改写为成功，也没有移动标签。
+
+发布后清理 `.tmp/release-v2.2.0`、`.tmp/release-v2.2.0-download-verify` 两个本轮目录和 `.tmp/release-220-ci-first-attempt.log`：合计 13 个文件、291,586,869 字节。删除前确认所有上传及下载进程已结束、目标位于本仓库 `.tmp` 内、不含 Git 跟踪文件或重解析点，删除后确认目标均不存在。保留交付目录、测试源码及本报告，不清理未知临时文件。
