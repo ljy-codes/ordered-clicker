@@ -128,3 +128,12 @@ The profile format remains v4. New optional fields retain previous defaults;
 old applications cannot enforce new window guards. No database, Redis or MQ
 migration is required. Native Mac, real desktop input and non-NTFS verification
 limits are recorded in `docs/test.md`.
+
+## Publication Follow-Up
+
+The feature commit is `ec3216b` and tag `v2.2.0`. Main CI passed. The first
+tag-release build passed application tests but exposed strict-mode XML
+adaptation in the installer test. The follow-up uses XPath and enables
+strict mode in the test itself; the full local packaging entry re-ran
+Windows 23/23 and all installer contracts successfully. Publish verified
+local artifacts; retain the original tag and unchanged product sources.

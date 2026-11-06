@@ -1,4 +1,5 @@
 $ErrorActionPreference = "Stop"
+Set-StrictMode -Version Latest
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $installerPath = Join-Path $projectRoot "installer\OrderedClicker.iss"
@@ -207,7 +208,7 @@ foreach ($relativeScript in @("scripts\build-macos.sh", "scripts\verify-macos-pa
 $macDeliveryScript = Read-OptionalFile -Path (Join-Path $projectRoot "scripts\package-macos-delivery.py")
 Assert-Contains -Content $macDeliveryScript -Expected "default='2.2.0'" -Name "Mac 交付脚本默认版本一致"
 [xml]$macPlist = Read-OptionalFile -Path (Join-Path $projectRoot "installer\macos\Info.plist")
-$plistKeys = @($macPlist.plist.dict.ChildNodes)
+$plistKeys = @($macPlist.SelectNodes("/plist/dict/*"))
 $shortVersionKey = @($plistKeys | Where-Object { $_.Name -eq "key" -and $_.InnerText -eq "CFBundleShortVersionString" })[0]
 $buildVersionKey = @($plistKeys | Where-Object { $_.Name -eq "key" -and $_.InnerText -eq "CFBundleVersion" })[0]
 Assert-True -Condition ($shortVersionKey.NextSibling.InnerText -eq "2.2.0") -Name "Mac 安装器显示版本一致"
