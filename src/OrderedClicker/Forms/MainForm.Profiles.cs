@@ -83,8 +83,7 @@ public sealed partial class MainForm
             return;
         }
 
-        ApplyLocalProfile(result.Profile!, selected.Path);
-        ClearExecutionCheckpoint();
+        ApplyLocalProfile(result.Profile!, selected.Path, result.SourceSha256);
         SetStatus($"已打开本机方案：{selected.Path}");
     }
 
@@ -126,16 +125,20 @@ public sealed partial class MainForm
 
     private void ApplyLocalProfile(ClickProfile profile, string sourcePath)
     {
+        ApplyLocalProfile(profile, sourcePath, null);
+    }
+
+    private void ApplyLocalProfile(ClickProfile profile, string sourcePath, string? sourceSha256)
+    {
         ApplyProfile(profile);
         _currentProfilePath = Path.GetFullPath(sourcePath);
-        _currentProfileFileHash = File.Exists(sourcePath)
-            ? ProfileService.ComputeFileSha256(sourcePath)
-            : null;
+        _currentProfileFileHash = sourceSha256;
         _saveImportedProfileAsCopy = false;
         _importedProfileSourcePath = null;
         UpdateProfileBaseline();
         _lastDraftSnapshot = ProfileService.CloneProfile(profile);
         _draftService?.Discard();
+        ReconcileExecutionCheckpoint();
     }
 
     private void UpdateProfileBaseline(ClickProfile? profile = null)

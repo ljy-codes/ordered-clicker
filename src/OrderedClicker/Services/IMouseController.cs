@@ -13,5 +13,7 @@ public interface IMouseController
 
     void LeftClick();
 
+    bool IsAtPosition(int x, int y) => true;
+
     void EnsureLeftButtonUp();
 }

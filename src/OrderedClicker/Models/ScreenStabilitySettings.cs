@@ -1,8 +1,13 @@
+using System.Text.Json.Serialization;
+
 namespace OrderedClicker.Models;
 
 public sealed class ScreenStabilitySettings
 {
     public bool Enabled { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ScreenBounds? Region { get; set; }
 
     public int SampleIntervalMs { get; set; } = 250;
 

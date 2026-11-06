@@ -56,19 +56,112 @@ public sealed class ClickExecutionEngine
         ExecutionCheckpoint checkpoint,
         AsyncPauseGate pauseGate,
         IProgress<ExecutionProgress>? progress,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ExecutionRunOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(checkpoint);
         ArgumentNullException.ThrowIfNull(pauseGate);
+        var mode = options?.Mode ?? ExecutionRunMode.Normal;
+        var rehearsal = mode == ExecutionRunMode.Rehearsal;
+        var safetyCheck = options?.SafetyCheck;
+        // A rehearsal has its own visit counters; a supplied normal checkpoint is untouched.
+        var startCheckpoint = rehearsal ? ExecutionCheckpoint.Start : checkpoint;
         var stopwatch = Stopwatch.StartNew();
-        var completedPoints = checkpoint.CompletedPointExecutionCount;
-        var completedClicks = checkpoint.CompletedClickCount;
-        var nextCheckpoint = checkpoint;
+        var completedPoints = startCheckpoint.CompletedPointExecutionCount;
+        var completedClicks = startCheckpoint.CompletedClickCount;
+        var nextCheckpoint = startCheckpoint;
         int? lastSourceIndex = null;
+        var positionEstablished = false;
+        var positionedGeneration = pauseGate.ResumeGeneration;
+        var positionedX = 0;
+        var positionedY = 0;
+
+        async Task PauseForContinueAsync(ExecutionPlanPoint point, string message)
+        {
+            pauseGate.Pause();
+            ReportProgress(
+                plan, nextCheckpoint, point, completedPoints, completedClicks,
+                progress, true, message, rehearsal);
+            await pauseGate.WaitIfPausedAsync(cancellationToken);
+            positionEstablished = false;
+        }
+
+        async Task PrepareInputAsync(ExecutionPlanPoint point)
+        {
+            while (true)
+            {
+                await pauseGate.WaitIfPausedAsync(cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+                var generation = pauseGate.ResumeGeneration;
+                if (generation != positionedGeneration)
+                {
+                    positionEstablished = false;
+                }
+
+                if (positionEstablished && !_mouseController.IsAtPosition(positionedX, positionedY))
+                {
+                    await PauseForContinueAsync(point, $"点位 {point.SourceIndex + 1} 的鼠标位置发生偏移");
+                    continue;
+                }
+
+                var reason = safetyCheck?.Invoke(point);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!string.IsNullOrEmpty(reason))
+                {
+                    await PauseForContinueAsync(point, reason);
+                    continue;
+                }
+
+                if (pauseGate.IsPaused || generation != pauseGate.ResumeGeneration)
+                {
+                    continue;
+                }
+
+                _mouseController.MoveTo(point.X, point.Y, plan.VirtualScreen);
+                positionEstablished = true;
+                positionedGeneration = generation;
+                positionedX = point.X;
+                positionedY = point.Y;
+                if (rehearsal)
+                {
+                    return;
+                }
+
+                cancellationToken.ThrowIfCancellationRequested();
+                if (pauseGate.IsPaused || generation != pauseGate.ResumeGeneration)
+                {
+                    continue;
+                }
+
+                reason = safetyCheck?.Invoke(point);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!string.IsNullOrEmpty(reason))
+                {
+                    await PauseForContinueAsync(point, reason);
+                    continue;
+                }
+
+                if (!_mouseController.IsAtPosition(point.X, point.Y))
+                {
+                    await PauseForContinueAsync(point, $"点位 {point.SourceIndex + 1} 的鼠标定位未保持");
+                    continue;
+                }
+
+                if (!pauseGate.IsPaused && generation == pauseGate.ResumeGeneration)
+                {
+                    return;
+                }
+            }
+        }
 
         try
         {
+            if (!Enum.IsDefined(mode))
+            {
+                throw new ArgumentOutOfRangeException(nameof(options), "执行模式无效。");
+            }
+
             ValidateCheckpoint(plan, nextCheckpoint);
             while (nextCheckpoint.Stage != ExecutionStage.Completed)
             {
@@ -78,9 +171,22 @@ public sealed class ClickExecutionEngine
                 switch (nextCheckpoint.Stage)
                 {
                     case ExecutionStage.Move:
-                        await pauseGate.WaitIfPausedAsync(cancellationToken);
-                        cancellationToken.ThrowIfCancellationRequested();
-                        _mouseController.MoveTo(point.X, point.Y, plan.VirtualScreen);
+                        if (rehearsal)
+                        {
+                            await PrepareInputAsync(point);
+                            completedPoints++;
+                            lastSourceIndex = point.SourceIndex;
+                            nextCheckpoint = nextCheckpoint with
+                            {
+                                Stage = ExecutionStage.AfterPointDelay,
+                                CompletedPointExecutionCount = completedPoints
+                            };
+                            ReportProgress(
+                                plan, nextCheckpoint, point, completedPoints, completedClicks,
+                                progress, rehearsal: true);
+                            break;
+                        }
+
                         nextCheckpoint = nextCheckpoint with
                         {
                             Stage = ExecutionStage.Click
@@ -88,8 +194,13 @@ public sealed class ClickExecutionEngine
                         break;
 
                     case ExecutionStage.Click:
-                        await pauseGate.WaitIfPausedAsync(cancellationToken);
+                        await PrepareInputAsync(point);
                         cancellationToken.ThrowIfCancellationRequested();
+                        if (pauseGate.IsPaused || positionedGeneration != pauseGate.ResumeGeneration)
+                        {
+                            break;
+                        }
+
                         IndeterminateClickException? indeterminateClick = null;
                         try
                         {
@@ -163,7 +274,9 @@ public sealed class ClickExecutionEngine
                         break;
 
                     case ExecutionStage.StabilityCheck:
-                        if (plan.ScreenStability.Enabled
+                        await pauseGate.WaitIfPausedAsync(cancellationToken);
+                        cancellationToken.ThrowIfCancellationRequested();
+                        if (!rehearsal && plan.ScreenStability.Enabled
                             && _stabilityDetector is not null)
                         {
                             var stability = await _stabilityDetector.WaitForStableAsync(
@@ -173,21 +286,20 @@ public sealed class ClickExecutionEngine
                                 cancellationToken);
                             if (stability == ScreenStabilityResult.TimedOut)
                             {
-                                pauseGate.Pause();
-                                ReportProgress(
-                                    plan,
-                                    nextCheckpoint,
-                                    point,
-                                    completedPoints,
-                                    completedClicks,
-                                    progress,
-                                    true,
-                                    $"点位 {point.SourceIndex + 1} 后画面未稳定");
-                                await pauseGate.WaitIfPausedAsync(cancellationToken);
+                                await PauseForContinueAsync(
+                                    point, $"点位 {point.SourceIndex + 1} 后画面未稳定");
                             }
                         }
 
                         nextCheckpoint = AdvanceAfterPoint(plan, nextCheckpoint);
+                        if (mode == ExecutionRunMode.Step
+                            && nextCheckpoint.Stage != ExecutionStage.Completed)
+                        {
+                            await PauseForContinueAsync(
+                                plan.Points[nextCheckpoint.PointIndex],
+                                "当前点位已完成，请继续执行下一点位");
+                        }
+
                         break;
 
                     case ExecutionStage.LoopDelay:
@@ -211,18 +323,22 @@ public sealed class ClickExecutionEngine
 
             var completed =
                 completedPoints == plan.PlannedPointExecutionCount
-                && completedClicks == plan.PlannedClickCount;
+                && completedClicks == (rehearsal ? 0 : plan.PlannedClickCount);
+            var completionMessage = rehearsal
+                ? "全部计划点位演练已完成，未发送点击。"
+                : "全部计划点位、等待阶段和点击次数已完成。";
             return CreateResult(
                 completed ? ExecutionOutcome.Completed : ExecutionOutcome.Failed,
                 completed
-                    ? "全部计划点位、等待阶段和点击次数已完成。"
+                    ? completionMessage
                     : "执行计数与计划不一致，未标记为完成。",
                 plan,
                 completedPoints,
                 completedClicks,
                 lastSourceIndex,
                 nextCheckpoint,
-                stopwatch.Elapsed);
+                stopwatch.Elapsed,
+                rehearsal);
         }
         catch (OperationCanceledException)
         {
@@ -234,7 +350,8 @@ public sealed class ClickExecutionEngine
                 completedClicks,
                 lastSourceIndex,
                 nextCheckpoint,
-                stopwatch.Elapsed);
+                stopwatch.Elapsed,
+                rehearsal);
         }
         catch (Exception exception)
         {
@@ -246,11 +363,15 @@ public sealed class ClickExecutionEngine
                 completedClicks,
                 lastSourceIndex,
                 nextCheckpoint,
-                stopwatch.Elapsed);
+                stopwatch.Elapsed,
+                rehearsal);
         }
         finally
         {
-            _mouseController.EnsureLeftButtonUp();
+            if (!rehearsal)
+            {
+                _mouseController.EnsureLeftButtonUp();
+            }
         }
     }
 
@@ -330,7 +451,8 @@ public sealed class ClickExecutionEngine
         long completedClicks,
         IProgress<ExecutionProgress>? progress,
         bool requiresUserContinue = false,
-        string message = "")
+        string message = "",
+        bool rehearsal = false)
     {
         var completedClickInPoint = Math.Min(
             checkpoint.ClickIndex,
@@ -340,14 +462,14 @@ public sealed class ClickExecutionEngine
             plan.TotalLoops,
             checkpoint.PointIndex + 1,
             plan.Points.Count,
-            completedClickInPoint,
-            point.ClickCount)
+            rehearsal ? 0 : completedClickInPoint,
+            rehearsal ? 0 : point.ClickCount)
         {
             SourceIndex = point.SourceIndex,
             CompletedPointExecutionCount = completedPoints,
             PlannedPointExecutionCount = plan.PlannedPointExecutionCount,
             CompletedClickCount = completedClicks,
-            PlannedClickCount = plan.PlannedClickCount,
+            PlannedClickCount = rehearsal ? 0 : plan.PlannedClickCount,
             Stage = checkpoint.Stage,
             RequiresUserContinue = requiresUserContinue,
             Message = message
@@ -362,13 +484,14 @@ public sealed class ClickExecutionEngine
         long completedClicks,
         int? lastSourceIndex,
         ExecutionCheckpoint checkpoint,
-        TimeSpan elapsed)
+        TimeSpan elapsed,
+        bool rehearsal = false)
     {
         return new ExecutionResult(
             outcome,
             plan.PlannedPointExecutionCount,
             completedPoints,
-            plan.PlannedClickCount,
+            rehearsal ? 0 : plan.PlannedClickCount,
             completedClicks,
             lastSourceIndex,
             checkpoint,

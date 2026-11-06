@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-VERSION="${ORDERED_CLICKER_VERSION:-2.1.0}"
+VERSION="${ORDERED_CLICKER_VERSION:-2.2.0}"
 VERIFY_ROOT="$(mktemp -d /private/tmp/ordered-clicker-verify.XXXXXX)"
 MOUNT="$VERIFY_ROOT/mount"
 mkdir -p "$MOUNT" "$ROOT/artifacts/macos/final-install"

@@ -5,10 +5,11 @@ namespace OrderedClicker.Forms;
 
 public sealed class ExecutionPlanDialog : Form
 {
-    public ExecutionPlanDialog(ExecutionPlan plan, AppTheme theme)
+    public ExecutionPlanDialog(
+        ExecutionPlan plan, AppTheme theme, ExecutionRunMode mode = ExecutionRunMode.Normal)
     {
         Name = "ExecutionPlanDialog";
-        Text = "确认执行计划";
+        Text = mode == ExecutionRunMode.Rehearsal ? "确认演练计划" : "确认执行计划";
         StartPosition = FormStartPosition.CenterParent;
         ClientSize = new Size(520, 390);
         MinimizeBox = false;
@@ -31,7 +32,9 @@ public sealed class ExecutionPlanDialog : Form
             ForeColor = theme.Text,
             Font = new Font("Segoe UI", 10F),
             Text =
-                $"总行数：{plan.TotalSourceRows}{Environment.NewLine}"
+                $"执行模式：{(mode == ExecutionRunMode.Rehearsal ? "演练（不点击）"
+                    : mode == ExecutionRunMode.Step ? "单步" : "正常执行")}{Environment.NewLine}"
+                + $"总行数：{plan.TotalSourceRows}{Environment.NewLine}"
                 + $"启用行：{plan.Points.Count}{Environment.NewLine}"
                 + $"禁用行：{disabledRows}{Environment.NewLine}"
                 + $"总循环：{plan.TotalLoops}{Environment.NewLine}"
@@ -43,6 +46,7 @@ public sealed class ExecutionPlanDialog : Form
                 + $"坐标范围：{plan.StabilityRegion.Width} × {plan.StabilityRegion.Height}"
                 + $"{Environment.NewLine}"
                 + $"画面稳定等待：{(plan.ScreenStability.Enabled ? "开启" : "关闭")}"
+                + $"{Environment.NewLine}目标窗口：{plan.TargetWindow?.WindowTitle ?? "未绑定"}"
                 + $"{Environment.NewLine}{Environment.NewLine}"
                 + "请确认启用行数量和计划点击数正确。只有实际完成数与计划完全一致，"
                 + "程序才会显示全部完成。"
@@ -56,7 +60,8 @@ public sealed class ExecutionPlanDialog : Form
             Padding = new Padding(0, 12, 12, 0),
             BackColor = theme.Window
         };
-        var start = CreateButton("开始执行", theme.Primary, Color.White);
+        var start = CreateButton(
+            mode == ExecutionRunMode.Rehearsal ? "开始演练" : "开始执行", theme.Primary, Color.White);
         start.DialogResult = DialogResult.OK;
         var cancel = CreateButton("返回检查", theme.Surface, theme.Text);
         cancel.DialogResult = DialogResult.Cancel;

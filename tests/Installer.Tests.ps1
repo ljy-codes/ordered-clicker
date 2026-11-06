@@ -181,10 +181,37 @@ Assert-Contains `
     -Content $publishScript `
     -Expected '$unexpectedRuntimeFiles = @(' `
     -Name "严格模式下稳定检查发布文件"
-Assert-Contains -Content $publishScript -Expected '[string]$Version = "2.1.0"' -Name "发布脚本接收版本"
-Assert-Contains -Content $project -Expected "<Version>2.1.0</Version>" -Name "项目版本为 2.1.0"
-Assert-Contains -Content $installer -Expected '#define AppVersion "2.1.0"' -Name "安装器默认版本为 2.1.0"
-Assert-Contains -Content $buildScript -Expected '[string]$Version = "2.1.0"' -Name "构建脚本默认版本为 2.1.0"
+Assert-Contains -Content $publishScript -Expected '[string]$Version = "2.2.0"' -Name "发布脚本接收版本"
+Assert-Contains -Content $project -Expected "<Version>2.2.0</Version>" -Name "项目版本为 2.2.0"
+Assert-Contains -Content $installer -Expected '#define AppVersion "2.2.0"' -Name "安装器默认版本为 2.2.0"
+Assert-Contains -Content $buildScript -Expected '[string]$Version = "2.2.0"' -Name "构建脚本默认版本为 2.2.0"
+foreach ($relativeProject in @(
+    "src\OrderedClicker\OrderedClicker.csproj",
+    "src\OrderedClicker.Shared\OrderedClicker.Shared.csproj",
+    "src\OrderedClicker.Mac\OrderedClicker.Mac.csproj"
+)) {
+    [xml]$projectXml = Read-OptionalFile -Path (Join-Path $projectRoot $relativeProject)
+    Assert-True -Condition (@($projectXml.Project.PropertyGroup.Version) -contains "2.2.0") `
+        -Name "$relativeProject 版本一致"
+}
+foreach ($metadata in @("AssemblyVersion", "FileVersion", "InformationalVersion")) {
+    $expectedVersion = if ($metadata -eq "InformationalVersion") { "2.2.0" } else { "2.2.0.0" }
+    Assert-Contains -Content $project -Expected "<$metadata>$expectedVersion</$metadata>" `
+        -Name "Windows $metadata 版本一致"
+}
+foreach ($relativeScript in @("scripts\build-macos.sh", "scripts\verify-macos-packages.sh")) {
+    $macScript = Read-OptionalFile -Path (Join-Path $projectRoot $relativeScript)
+    Assert-Contains -Content $macScript -Expected '${ORDERED_CLICKER_VERSION:-2.2.0}' `
+        -Name "$relativeScript 默认版本一致"
+}
+$macDeliveryScript = Read-OptionalFile -Path (Join-Path $projectRoot "scripts\package-macos-delivery.py")
+Assert-Contains -Content $macDeliveryScript -Expected "default='2.2.0'" -Name "Mac 交付脚本默认版本一致"
+[xml]$macPlist = Read-OptionalFile -Path (Join-Path $projectRoot "installer\macos\Info.plist")
+$plistKeys = @($macPlist.plist.dict.ChildNodes)
+$shortVersionKey = @($plistKeys | Where-Object { $_.Name -eq "key" -and $_.InnerText -eq "CFBundleShortVersionString" })[0]
+$buildVersionKey = @($plistKeys | Where-Object { $_.Name -eq "key" -and $_.InnerText -eq "CFBundleVersion" })[0]
+Assert-True -Condition ($shortVersionKey.NextSibling.InnerText -eq "2.2.0") -Name "Mac 安装器显示版本一致"
+Assert-True -Condition ($buildVersionKey.NextSibling.InnerText -eq "2200") -Name "Mac 安装器构建号递增"
 Assert-Contains -Content $buildScript -Expected '[switch]$Release' -Name "发布构建显式区分签名模式"
 Assert-Contains -Content $buildScript -Expected '[string]$SigningCertificatePath' -Name "发布构建接收签名证书"
 Assert-Contains -Content $buildScript -Expected 'ORDERED_CLICKER_SIGNING_PASSWORD' -Name "签名密码从环境变量读取"
@@ -221,16 +248,8 @@ Assert-Contains `
     -Name "GitHub Release 使用稳定的英文 HTML 文件名"
 Assert-Contains `
     -Content $releaseWorkflow `
-    -Expected 'Invoke-RestMethod -Method Delete' `
-    -Name "重新发布前删除同标签旧附件"
-Assert-Contains `
-    -Content $releaseWorkflow `
     -Expected 'ordered-clicker-release' `
     -Name "GitHub Release 使用独立附件暂存目录"
-Assert-Contains `
-    -Content $releaseWorkflow `
-    -Expected 'fail_on_unmatched_files: true' `
-    -Name "Release 附件缺失时立即失败"
 Assert-NotContains `
     -Content $releaseWorkflow `
     -Unexpected '${{ runner.temp }}/ordered-clicker-product/有序连点器' `
@@ -257,12 +276,204 @@ Assert-Contains `
     -Content $readme `
     -Expected "安装版 EXE、免安装 EXE、PDF 使用说明、HTML 使用说明和 SHA256SUMS.txt" `
     -Name "五文件交付说明"
+foreach ($guideSource in @(
+    "README.md",
+    "scripts\guide\build_product_guide.py",
+    "scripts\guide\build_pdf_guide.py",
+    "scripts\build-macos-guide.py",
+    "docs\macos\BUILD.md"
+)) {
+    $guideContent = Read-OptionalFile -Path (Join-Path $projectRoot $guideSource)
+    foreach ($term in @("2.2.0", "演练", "单步", "窗口绑定", "自定义检测区域", "v4", "不改变正式执行断点")) {
+        Assert-Contains -Content $guideContent -Expected $term -Name "$guideSource 包含 $term"
+    }
+}
 
 $guidePreflightIndex = $buildScript.IndexOf("缺少指导文件", [StringComparison]::Ordinal)
 $publishIndex = $buildScript.IndexOf("发布 Windows x64 自包含应用", [StringComparison]::Ordinal)
 Assert-True `
     -Condition ($guidePreflightIndex -ge 0 -and $publishIndex -ge 0 -and $guidePreflightIndex -lt $publishIndex) `
     -Name "指导文件在发布前预检"
+
+# Execute the workflow's real upload block; only the HTTP boundary is replaced.
+function Test-ReleaseAssetReplacement {
+    param([string]$Scenario)
+
+    $stepMatch = [regex]::Match(
+        $releaseWorkflow,
+        '(?ms)^      - name: (?:Replace release assets|Clear existing release assets)\r?\n(?:(?!^      - ).)*?^        run: \|\r?\n(?<body>(?:^          [^\r\n]*(?:\r?\n|$)|^\r?\n)+)')
+    if (-not $stepMatch.Success) {
+        Assert-True -Condition $false -Name "可以提取实际发布步骤"
+        return
+    }
+    $workflowCode = [regex]::Replace($stepMatch.Groups["body"].Value, '(?m)^          ', '')
+    $workflowAction = [scriptblock]::Create($workflowCode)
+    $fixtureRoot = Join-Path $projectRoot ".tmp\release-assets-$([Guid]::NewGuid().ToString('N'))"
+    $stageDirectory = Join-Path $fixtureRoot "ordered-clicker-release"
+    $savedEnvironment = @{}
+    foreach ($key in @("RUNNER_TEMP", "RELEASE_DIRECTORY", "GITHUB_REPOSITORY", "GITHUB_REF_NAME", "GH_TOKEN")) {
+        $savedEnvironment[$key] = [Environment]::GetEnvironmentVariable($key, "Process")
+    }
+    $state = @{
+        Assets = [System.Collections.Generic.List[object]]::new()
+        Calls = [System.Collections.Generic.List[string]]::new()
+        Uploads = 0
+        NextId = 1000
+    }
+    $setupName = "ordered-clicker-setup-v2.2.0.exe"
+    $unrelatedNames = @(
+        "ordered-clicker-macos-arm64-v2.2.0.dmg",
+        "ordered-clicker-macos-x64-v2.2.0.dmg",
+        "SHA256SUMS-macos.txt",
+        "manual-notes.txt",
+        "ordered-clicker-setup-v2.2.0.exe.backup"
+    )
+    foreach ($name in @($setupName, "SHA256SUMS.txt") + $unrelatedNames) {
+        $state.Assets.Add([pscustomobject]@{ id = $state.Assets.Count + 1; name = $name; content = "original:$name" })
+    }
+    # Put another exact match beyond the first API page.
+    for ($index = 0; $index -lt 100; $index++) {
+        $state.Assets.Add([pscustomobject]@{ id = $state.Assets.Count + 1; name = "other-$index.txt"; content = "keep" })
+    }
+    $state.Assets.Add([pscustomobject]@{ id = 200; name = "release-guide.html"; content = "old-guide" })
+
+    function Invoke-RestMethod {
+        param($Method, $Uri, $Headers, $InFile, $ContentType, $Body, $ErrorAction,
+            [switch]$SkipHttpErrorCheck, [string]$StatusCodeVariable)
+        $state.Calls.Add("$Method $Uri")
+        $request = [uri]$Uri
+        if ($Method -eq "Get" -and $request.AbsolutePath -match '/releases/tags/') {
+            if ($StatusCodeVariable) { Set-Variable -Name $StatusCodeVariable -Value 200 -Scope 1 }
+            return [pscustomobject]@{
+                id = 99
+                upload_url = 'https://uploads.github.test/repos/test/repo/releases/99/assets{?name,label}'
+                assets = @($state.Assets | Select-Object -First 100)
+            }
+        }
+        if ($Method -eq "Get" -and $request.AbsolutePath -match '/releases/99/assets$') {
+            if ($Scenario -eq "QueryFailure") { throw "simulated asset query failure" }
+            $pageMatch = [regex]::Match($request.Query, '(?:[?&])page=(\d+)')
+            $page = if ($pageMatch.Success) { [int]$pageMatch.Groups[1].Value } else { 1 }
+            return @($state.Assets | Select-Object -Skip (($page - 1) * 100) -First 100)
+        }
+        if ($Method -eq "Post") {
+            $state.Uploads++
+            if ($Scenario -eq "UploadFailure" -and $state.Uploads -eq 2) {
+                throw "simulated upload failure"
+            }
+            $nameMatch = [regex]::Match($request.Query, '(?:[?&])name=([^&]+)')
+            $name = [uri]::UnescapeDataString($nameMatch.Groups[1].Value)
+            if (@($state.Assets | Where-Object { $_.name -ceq $name }).Count -gt 0) {
+                throw "duplicate asset name: $name"
+            }
+            $asset = [pscustomobject]@{
+                id = $state.NextId++
+                name = $name
+                content = [System.IO.File]::ReadAllText($InFile)
+            }
+            $state.Assets.Add($asset)
+            return $asset
+        }
+        if ($Method -eq "Delete" -or $Method -eq "Patch") {
+            $id = [int]($request.Segments[-1])
+            $asset = @($state.Assets | Where-Object { $_.id -eq $id })[0]
+            if (-not $asset) { throw "unknown asset: $id" }
+            if ($Method -eq "Delete") {
+                [void]$state.Assets.Remove($asset)
+                return
+            }
+            $newName = ($Body | ConvertFrom-Json).name
+            if (@($state.Assets | Where-Object { $_.name -ceq $newName }).Count -gt 0) {
+                throw "duplicate rename: $newName"
+            }
+            $asset.name = $newName
+            return $asset
+        }
+        throw "Unexpected release API request: $Method $Uri"
+    }
+
+    try {
+        New-Item -ItemType Directory -Path $stageDirectory -Force | Out-Null
+        if ($Scenario -ne "EmptyStage") {
+            foreach ($name in @($setupName, "SHA256SUMS.txt", "release-guide.html")) {
+                [System.IO.File]::WriteAllText((Join-Path $stageDirectory $name), "new:$name")
+            }
+        }
+        $env:RUNNER_TEMP = $fixtureRoot
+        $env:RELEASE_DIRECTORY = $stageDirectory
+        $env:GITHUB_REPOSITORY = "test/repo"
+        $env:GITHUB_REF_NAME = "v2.2.0"
+        $env:GH_TOKEN = "offline-fixture"
+        $failure = $null
+        try { & $workflowAction }
+        catch { $failure = $_.Exception.Message }
+
+        if ($Scenario -eq "Success") {
+            Assert-True -Condition ($null -eq $failure) -Name "实际工作流附件替换成功：$failure"
+            foreach ($name in @($setupName, "SHA256SUMS.txt", "release-guide.html")) {
+                $matches = @($state.Assets | Where-Object { $_.name -ceq $name })
+                Assert-True -Condition ($matches.Count -eq 1 -and $matches[0].content -ceq "new:$name") `
+                    -Name "同名附件替换且内容正确：$name"
+            }
+            Assert-True -Condition ($state.Assets.Count -eq 108) -Name "分页替换后无临时附件或额外删除"
+            $deletions = @($state.Calls -match '^Delete ')
+            $lastUploadIndex = -1
+            $firstDeleteIndex = -1
+            for ($index = 0; $index -lt $state.Calls.Count; $index++) {
+                if ($state.Calls[$index] -like "Post *") { $lastUploadIndex = $index }
+                if ($state.Calls[$index] -like "Delete *" -and $firstDeleteIndex -lt 0) { $firstDeleteIndex = $index }
+            }
+            Assert-True -Condition ($deletions.Count -eq 3 -and $firstDeleteIndex -gt $lastUploadIndex) `
+                -Name "全部上传成功后才删除精确同名旧附件"
+        }
+        elseif ($Scenario -eq "UploadFailure") {
+            Assert-True -Condition ($failure -like "*simulated upload failure*") -Name "上传失败向 CI 报错"
+            foreach ($name in @($setupName, "SHA256SUMS.txt")) {
+                $matches = @($state.Assets | Where-Object { $_.name -ceq $name })
+                Assert-True -Condition ($matches.Count -eq 1 -and $matches[0].content -ceq "original:$name") `
+                    -Name "上传失败保留旧附件：$name"
+            }
+            Assert-True -Condition (@($state.Assets | Where-Object { $_.id -ge 1000 }).Count -eq 0) `
+                -Name "上传失败清理本次临时附件"
+            Assert-True -Condition ($state.Assets.Count -eq 108) -Name "上传失败原有附件总数不变"
+        }
+        elseif ($Scenario -eq "QueryFailure") {
+            Assert-True -Condition ($failure -like "*simulated asset query failure*") -Name "附件查询失败向 CI 报错"
+            Assert-True -Condition ($state.Uploads -eq 0 -and $state.Assets.Count -eq 108) `
+                -Name "查询失败不上传或删除附件"
+        }
+        else {
+            Assert-True -Condition ($null -ne $failure) -Name "附件目录为空时失败"
+            Assert-True -Condition ($state.Calls.Count -eq 0) -Name "附件目录为空时不调用发布 API"
+        }
+        foreach ($name in $unrelatedNames) {
+            $matches = @($state.Assets | Where-Object { $_.name -ceq $name })
+            Assert-True -Condition ($matches.Count -eq 1 -and $matches[0].content -ceq "original:$name") `
+                -Name "$Scenario 保留其他平台及非同名附件：$name"
+        }
+        if ($Scenario -ne "Success") {
+            Assert-True -Condition (@($state.Assets | Where-Object { $_.id -eq 200 -and $_.content -eq "old-guide" }).Count -eq 1) `
+                -Name "$Scenario 保留分页后旧附件"
+        }
+    }
+    finally {
+        foreach ($key in $savedEnvironment.Keys) {
+            [Environment]::SetEnvironmentVariable($key, $savedEnvironment[$key], "Process")
+        }
+        $resolvedFixture = [System.IO.Path]::GetFullPath($fixtureRoot)
+        $expectedParent = [System.IO.Path]::GetFullPath((Join-Path $projectRoot ".tmp")) + '\'
+        if (-not $resolvedFixture.StartsWith($expectedParent, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Unsafe release test cleanup path: $resolvedFixture"
+        }
+        if (Test-Path -LiteralPath $resolvedFixture) {
+            Remove-Item -LiteralPath $resolvedFixture -Recurse -Force
+        }
+    }
+}
+
+foreach ($scenario in @("Success", "UploadFailure", "EmptyStage", "QueryFailure")) {
+    Test-ReleaseAssetReplacement -Scenario $scenario
+}
 
 if (Test-Path -LiteralPath $pathSafetyPath -PathType Leaf) {
     . $pathSafetyPath

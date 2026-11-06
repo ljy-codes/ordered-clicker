@@ -2,6 +2,9 @@ using System.Text;
 using System.Text.Json;
 using System.Security.Cryptography;
 using System.Collections.Concurrent;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 using OrderedClicker.Core;
 using OrderedClicker.Models;
 
@@ -41,6 +44,19 @@ public sealed class ProfileService
     public IReadOnlyList<LocalProfileEntry> ListLocalProfiles()
     {
         Directory.CreateDirectory(ProfilesDirectory);
+        foreach (var orphan in Directory.EnumerateFiles(
+                     ProfilesDirectory, "*.previous", SearchOption.TopDirectoryOnly).ToArray())
+        {
+            var marker = orphan.LastIndexOf(".save-", StringComparison.OrdinalIgnoreCase);
+            if (marker >= 0
+                && Guid.TryParseExact(
+                    orphan.AsSpan(marker + 6, orphan.Length - marker - 6 - ".previous".Length),
+                    "N", out _))
+            {
+                TryRecoverPreviousVersion(orphan[..marker]);
+            }
+        }
+
         return Directory
             .EnumerateFiles(ProfilesDirectory, "*", SearchOption.TopDirectoryOnly)
             .Where(path => string.Equals(
@@ -86,6 +102,7 @@ public sealed class ProfileService
         }
 
         Directory.CreateDirectory(directory);
+        TryRecoverPreviousVersion(destination);
         if (File.Exists(destination) && !options.AllowOverwrite)
         {
             throw new IOException("目标方案已存在，必须明确确认后才能覆盖。");
@@ -217,7 +234,7 @@ public sealed class ProfileService
         var profile = result.Profile!;
         var validationError = ValidateProfile(profile);
         return validationError is null
-            ? ProfileLoadResult.Loaded(profile)
+            ? result
             : ProfileLoadResult.Failed(validationError);
     }
 
@@ -225,7 +242,17 @@ public sealed class ProfileService
     {
         try
         {
-            var json = File.ReadAllText(path, Encoding.UTF8);
+            TryRecoverPreviousVersion(path);
+            byte[] bytes;
+            using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+            using (var content = new MemoryStream())
+            {
+                stream.CopyTo(content);
+                bytes = content.ToArray();
+            }
+
+            using var reader = new StreamReader(new MemoryStream(bytes), Encoding.UTF8, true);
+            var json = reader.ReadToEnd();
             var profile = JsonSerializer.Deserialize<ClickProfile>(json, JsonOptions);
             if (profile is null)
             {
@@ -234,7 +261,8 @@ public sealed class ProfileService
 
             profile.Points ??= [];
             profile.ScreenStability ??= new ScreenStabilitySettings();
-            return ProfileLoadResult.Loaded(profile);
+            return ProfileLoadResult.Loaded(
+                profile, Convert.ToHexString(SHA256.HashData(bytes)));
         }
         catch (Exception exception) when (
             exception is IOException
@@ -409,60 +437,40 @@ public sealed class ProfileService
         string expectedExistingSha256,
         bool createBackup)
     {
-        EnsureExpectedFileVersion(destination, expectedExistingSha256);
         var capturedPath =
             $"{destination}.save-{Guid.NewGuid():N}.previous";
         try
         {
-            try
+            // Deny in-place writers while allowing the atomic name replacement.
+            using (var lease = OpenCapturedVersion(destination))
             {
-                File.Move(destination, capturedPath, false);
-            }
-            catch (Exception exception) when (
-                exception is IOException or UnauthorizedAccessException)
-            {
-                throw new ProfileConflictException(
-                    "方案文件正在被其他程序写入，请稍后重试或另存为新文件。",
-                    exception);
-            }
-
-            try
-            {
-                using (var capturedLease = OpenCapturedVersion(capturedPath))
+                var expectedHash = Convert.ToHexString(SHA256.HashData(lease));
+                if (!string.Equals(expectedHash, expectedExistingSha256,
+                        StringComparison.OrdinalIgnoreCase))
                 {
-                    var capturedHash = Convert.ToHexString(
-                        SHA256.HashData(capturedLease));
-                    if (!string.Equals(
-                            capturedHash,
-                            expectedExistingSha256,
-                            StringComparison.OrdinalIgnoreCase))
-                    {
-                        throw new ProfileConflictException(
-                            "方案文件已被其他程序或窗口修改，请另存为新文件。");
-                    }
-
-                    if (createBackup)
-                    {
-                        capturedLease.Position = 0;
-                        using var backup = new FileStream(destination + ".bak", FileMode.Create, FileAccess.Write, FileShare.None);
-                        capturedLease.CopyTo(backup);
-                    }
-
-                    if (File.Exists(destination))
-                    {
-                        throw new ProfileConflictException(
-                            "方案保存期间目标路径被其他程序占用，请另存为新文件。");
-                    }
-
-                    File.Move(temporary, destination, false);
+                    throw new ProfileConflictException(
+                        "方案文件已被其他程序或窗口修改，请另存为新文件。");
                 }
 
-                TryDeleteFile(capturedPath);
+                lease.Position = 0;
+                using (var previous = new FileStream(capturedPath, FileMode.CreateNew,
+                           FileAccess.Write, FileShare.Read))
+                {
+                    lease.CopyTo(previous);
+                    previous.Flush(true);
+                }
+
+                EnsureExpectedFileVersion(destination, expectedExistingSha256);
+                AtomicReplace(temporary, destination);
             }
-            catch
+
+            if (createBackup)
             {
-                RestoreCapturedVersion(capturedPath, destination);
-                throw;
+                File.Move(capturedPath, destination + ".bak", true);
+            }
+            else
+            {
+                TryDeleteFile(capturedPath);
             }
         }
         catch (ProfileConflictException)
@@ -472,12 +480,92 @@ public sealed class ProfileService
         catch (Exception exception) when (
             exception is IOException or UnauthorizedAccessException)
         {
-            RestoreCapturedVersion(capturedPath, destination);
+            TryRecoverPreviousVersion(destination);
             throw new ProfileConflictException(
                 "方案保存期间文件状态发生变化，请另存为新文件。",
                 exception);
         }
     }
+
+    private static void AtomicReplace(string temporary, string destination)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            File.Move(temporary, destination, true);
+            return;
+        }
+
+        // ReplaceFileW briefly removes the destination on Windows. A single
+        // POSIX rename keeps the name present and preserves existing read handles.
+        using var source = CreateFileForRename(
+            GetWindowsExtendedPath(temporary), 0x00010000,
+            FileShare.ReadWrite | FileShare.Delete, IntPtr.Zero, 3, 0, IntPtr.Zero);
+        if (source.IsInvalid)
+        {
+            throw new IOException("无法打开待提交的方案文件。",
+                new Win32Exception(Marshal.GetLastWin32Error()));
+        }
+
+        var name = Encoding.Unicode.GetBytes(GetWindowsExtendedPath(destination));
+        var nameOffset = IntPtr.Size == 8 ? 20 : 12;
+        // The Win32 wrapper also reads the name as a terminated string.
+        var size = nameOffset + name.Length + sizeof(char);
+        var information = Marshal.AllocHGlobal(size);
+        try
+        {
+            // FILE_RENAME_INFO: flags, aligned root handle, byte length, UTF-16 name.
+            Marshal.Copy(new byte[size], 0, information, size);
+            const int replaceIfExists = 1;
+            const int posixSemantics = 2;
+            Marshal.WriteInt32(information, replaceIfExists | posixSemantics);
+            Marshal.WriteInt32(information, nameOffset - sizeof(int), name.Length);
+            Marshal.Copy(name, 0, IntPtr.Add(information, nameOffset), name.Length);
+            const int fileRenameInfoEx = 22;
+            if (!SetFileInformationByHandle(source, fileRenameInfoEx,
+                    information, (uint)size))
+            {
+                var error = Marshal.GetLastWin32Error();
+                if (error is 1 or 50 or 87)
+                {
+                    // Older filesystems may not support extended rename flags.
+                    source.Dispose();
+                    File.Move(temporary, destination, true);
+                    return;
+                }
+
+                throw new IOException("无法原子替换方案文件。",
+                    new Win32Exception(error));
+            }
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(information);
+        }
+    }
+
+    private static string GetWindowsExtendedPath(string path)
+    {
+        var fullPath = Path.GetFullPath(path);
+        if (fullPath.StartsWith(@"\\?\", StringComparison.Ordinal))
+        {
+            return fullPath;
+        }
+
+        return fullPath.StartsWith(@"\\", StringComparison.Ordinal)
+            ? @"\\?\UNC\" + fullPath[2..]
+            : @"\\?\" + fullPath;
+    }
+
+    [DllImport("kernel32.dll", EntryPoint = "CreateFileW",
+        CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern SafeFileHandle CreateFileForRename(
+        string path, uint access, FileShare share, IntPtr securityAttributes,
+        uint creationDisposition, uint flags, IntPtr template);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetFileInformationByHandle(
+        SafeFileHandle file, int informationClass, IntPtr information, uint size);
 
     private static FileStream OpenCapturedVersion(string capturedPath)
     {
@@ -487,7 +575,7 @@ public sealed class ProfileService
                 capturedPath,
                 FileMode.Open,
                 FileAccess.Read,
-                OperatingSystem.IsWindows() ? FileShare.Read : FileShare.None);
+                OperatingSystem.IsWindows() ? FileShare.Read | FileShare.Delete : FileShare.None);
         }
         catch (Exception exception) when (
             exception is IOException or UnauthorizedAccessException)
@@ -498,23 +586,67 @@ public sealed class ProfileService
         }
     }
 
-    private static void RestoreCapturedVersion(
-        string capturedPath,
-        string destination)
+    private static void TryRecoverPreviousVersion(string destination)
     {
-        if (!File.Exists(capturedPath) || File.Exists(destination))
+        var fullPath = Path.GetFullPath(destination);
+        var saveLock = SaveLocks.GetOrAdd(fullPath, static _ => new object());
+        lock (saveLock)
         {
-            return;
-        }
+            if (File.Exists(fullPath))
+            {
+                return;
+            }
 
-        try
-        {
-            File.Move(capturedPath, destination, false);
-        }
-        catch (Exception exception) when (
-            exception is IOException or UnauthorizedAccessException)
-        {
-            // Keep the captured file beside the destination for manual recovery.
+            var directory = Path.GetDirectoryName(fullPath)!;
+            if (!Directory.Exists(directory))
+            {
+                return;
+            }
+
+            var prefix = Path.GetFileName(fullPath) + ".save-";
+            try
+            {
+                var candidates = Directory.EnumerateFiles(directory, "*.previous")
+                    .Where(path => Path.GetFileName(path).StartsWith(prefix,
+                        StringComparison.OrdinalIgnoreCase))
+                    .Where(path => Guid.TryParseExact(
+                        Path.GetFileName(path).AsSpan(prefix.Length,
+                            Path.GetFileName(path).Length - prefix.Length - ".previous".Length),
+                        "N", out _))
+                    .OrderByDescending(File.GetLastWriteTimeUtc)
+                    .ThenBy(path => path, StringComparer.Ordinal)
+                    .ToArray();
+                foreach (var candidate in candidates)
+                {
+                    try
+                    {
+                        using var lease = OpenCapturedVersion(candidate);
+                        using var reader = new StreamReader(lease, Encoding.UTF8, true,
+                            bufferSize: 1024, leaveOpen: true);
+                        var profile = JsonSerializer.Deserialize<ClickProfile>(
+                            reader.ReadToEnd(), JsonOptions);
+                        if (profile is null || profile.Points is null
+                            || ValidateProfile(profile) is not null)
+                        {
+                            continue;
+                        }
+
+                        File.Move(candidate, fullPath, false);
+                        return;
+                    }
+                    catch (Exception exception) when (
+                        exception is IOException or UnauthorizedAccessException
+                        or JsonException or NotSupportedException)
+                    {
+                        // Invalid or busy candidates remain available for manual recovery.
+                    }
+                }
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException)
+            {
+                // Recovery is best effort and must never replace a newer formal file.
+            }
         }
     }
 

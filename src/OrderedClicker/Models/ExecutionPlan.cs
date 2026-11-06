@@ -6,6 +6,10 @@ public sealed class ExecutionPlan
 
     public required ScreenBounds VirtualScreen { get; init; }
 
+    public TargetWindowBinding? TargetWindow { get; init; }
+
+    public ClickProfile? SourceProfile { get; init; }
+
     public int TotalSourceRows { get; init; }
 
     public required IReadOnlyList<int> DisabledSourceRowNumbers { get; init; }

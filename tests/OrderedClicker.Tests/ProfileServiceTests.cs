@@ -7,6 +7,13 @@ internal static class ProfileServiceTests
 {
     public static void Run()
     {
+        RecoversNewestValidPreviousVersion();
+        PreservesFormalFileDuringOrphanRecovery();
+        ReturnsHashForTheLoadedBytes();
+        KeepsFormalPathPresentDuringExpectedSave();
+        PreservesPreviousReaderAndBackupDuringExpectedSave();
+        SavesExpectedVersionUnderLongUnicodePath();
+        RejectsConcurrentExpectedSaves();
         PersistsV4IdentityAndTimestamps();
         RenewsIdentityWhenSavingAs();
         CreatesBackupOnlyForExplicitOverwrite();
@@ -27,6 +34,209 @@ internal static class ProfileServiceTests
         RejectsInvalidCloudRelativeCoordinate();
         RejectsNullPointWithControlledError();
         ReturnsControlledErrorForMalformedJson();
+    }
+
+    private static void RecoversNewestValidPreviousVersion()
+    {
+        using var directory = new TemporaryDirectory();
+        var service = new ProfileService(directory.Path);
+        var destination = Path.Combine(directory.Path, "recovery.oclick");
+        var profile = CreateCompleteProfile();
+        service.Save(profile, destination);
+        var older = $"{destination}.save-{Guid.NewGuid():N}.previous";
+        File.Move(destination, older);
+        File.SetLastWriteTimeUtc(older, DateTime.UtcNow.AddMinutes(-3));
+        profile.TotalLoops = 17;
+        var staging = Path.Combine(directory.Path, "staging.oclick");
+        service.Save(profile, staging);
+        var newer = $"{destination}.save-{Guid.NewGuid():N}.previous";
+        File.Move(staging, newer);
+        File.SetLastWriteTimeUtc(newer, DateTime.UtcNow.AddMinutes(-2));
+        var invalid = $"{destination}.save-{Guid.NewGuid():N}.previous";
+        File.WriteAllText(invalid, "{broken");
+        File.SetLastWriteTimeUtc(invalid, DateTime.UtcNow.AddMinutes(-1));
+
+        var result = service.Load(destination);
+
+        TestAssert.True(result.Success, "缺失正式文件时应恢复有效的孤留版本");
+        TestAssert.Equal(17, result.Profile!.TotalLoops, "应选择最近的有效孤留版本");
+        TestAssert.True(File.Exists(older) && File.Exists(invalid),
+            "恢复不得删除其他候选或无效证据");
+    }
+
+    private static void PreservesFormalFileDuringOrphanRecovery()
+    {
+        using var directory = new TemporaryDirectory();
+        var service = new ProfileService(directory.Path);
+        var destination = Path.Combine(directory.Path, "formal.oclick");
+        var profile = CreateCompleteProfile();
+        service.Save(profile, destination);
+        var orphan = $"{destination}.save-{Guid.NewGuid():N}.previous";
+        File.Copy(destination, orphan);
+        profile.TotalLoops = 21;
+        service.Save(profile, destination, new ProfileSaveOptions(AllowOverwrite: true));
+        var content = File.ReadAllText(destination);
+
+        service.ListLocalProfiles();
+        var result = service.Load(destination);
+
+        TestAssert.Equal(21, result.Profile!.TotalLoops, "孤留副本不得替换正式方案");
+        TestAssert.Equal(content, File.ReadAllText(destination), "恢复不得写入已有正式文件");
+        TestAssert.True(File.Exists(orphan), "已有正式文件时保留孤留副本");
+    }
+
+    private static void ReturnsHashForTheLoadedBytes()
+    {
+        using var directory = new TemporaryDirectory();
+        var service = new ProfileService(directory.Path);
+        var destination = Path.Combine(directory.Path, "hash.oclick");
+        service.Save(CreateCompleteProfile(), destination);
+        var expected = Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(destination)));
+
+        var loaded = service.Load(destination);
+        var imported = service.Import(destination);
+        File.WriteAllText(destination, "external-change");
+
+        TestAssert.Equal(expected, loaded.SourceSha256, "加载哈希应来自解析的同一批字节");
+        TestAssert.Equal(expected, imported.SourceSha256, "导入不得丢失来源哈希");
+    }
+
+    private static void PreservesPreviousReaderAndBackupDuringExpectedSave()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using var directory = new TemporaryDirectory();
+        var service = new ProfileService(directory.Path);
+        var destination = Path.Combine(directory.Path, "atomic.oclick");
+        var profile = CreateCompleteProfile();
+        service.Save(profile, destination);
+        var hash = ProfileService.ComputeFileSha256(destination);
+        var previous = File.ReadAllText(destination);
+        using var reader = new StreamReader(new FileStream(destination,
+            FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete));
+        profile.TotalLoops++;
+
+        service.Save(profile, destination, new ProfileSaveOptions(
+            CreateBackup: true, AllowOverwrite: true, ExpectedExistingSha256: hash));
+
+        TestAssert.Equal(previous, reader.ReadToEnd(),
+            "替换期间已打开的只读句柄应保留旧版本");
+        TestAssert.Equal(previous, File.ReadAllText(destination + ".bak"),
+            "原子提交备份应精确保留前一版本");
+        TestAssert.Equal(profile.TotalLoops, service.Load(destination).Profile!.TotalLoops,
+            "正式路径应指向完整的新版本");
+    }
+
+    private static void KeepsFormalPathPresentDuringExpectedSave()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using var directory = new TemporaryDirectory();
+        var service = new ProfileService(directory.Path);
+        var destination = Path.Combine(directory.Path, "continuous.oclick");
+        var profile = CreateCompleteProfile();
+        service.Save(profile, destination);
+        using var stop = new CancellationTokenSource();
+        using var ready = new ManualResetEventSlim();
+        var missing = false;
+        var observer = new Thread(() =>
+        {
+            ready.Set();
+            while (!stop.IsCancellationRequested)
+            {
+                if (!File.Exists(destination))
+                {
+                    missing = true;
+                }
+            }
+        }) { IsBackground = true };
+        observer.Start();
+        ready.Wait();
+        try
+        {
+            for (var index = 0; index < 32; index++)
+            {
+                var hash = ProfileService.ComputeFileSha256(destination);
+                profile.TotalLoops++;
+                service.Save(profile, destination, new ProfileSaveOptions(
+                    CreateBackup: true, AllowOverwrite: true, ExpectedExistingSha256: hash));
+                TestAssert.Equal(profile.TotalLoops, service.Load(destination).Profile!.TotalLoops,
+                    "每次保存后的正式路径必须包含新版本");
+            }
+        }
+        finally
+        {
+            stop.Cancel();
+            observer.Join();
+        }
+
+        TestAssert.True(!missing, "保存期间正式方案路径不得短暂消失");
+        TestAssert.Equal(2, Directory.EnumerateFiles(directory.Path).Count(),
+            "保存不得生成正式文件和备份以外的意外文件名");
+    }
+
+    private static void SavesExpectedVersionUnderLongUnicodePath()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using var directory = new TemporaryDirectory();
+        var nested = Path.Combine(directory.Path, new string('长', 180));
+        var service = new ProfileService(nested);
+        var profile = CreateCompleteProfile();
+        var destination = Path.Combine(nested, "中文方案.oclick");
+        service.Save(profile, destination);
+        var hash = ProfileService.ComputeFileSha256(destination);
+        profile.TotalLoops++;
+
+        service.Save(profile, destination, new ProfileSaveOptions(
+            CreateBackup: true, AllowOverwrite: true, ExpectedExistingSha256: hash));
+
+        TestAssert.Equal(profile.TotalLoops, service.Load(destination).Profile!.TotalLoops,
+            "长中文路径必须可覆盖保存并读取新版本");
+        TestAssert.Equal(profile.TotalLoops - 1,
+            service.Load(destination + ".bak").Profile!.TotalLoops,
+            "长中文路径备份必须保留上一版本");
+        TestAssert.Equal(2, Directory.EnumerateFiles(nested).Count(),
+            "长路径保存不得产生带意外后缀的文件");
+    }
+
+    private static void RejectsConcurrentExpectedSaves()
+    {
+        using var directory = new TemporaryDirectory();
+        var service = new ProfileService(directory.Path);
+        var destination = Path.Combine(directory.Path, "same-process.oclick");
+        var original = CreateCompleteProfile();
+        service.Save(original, destination);
+        var hash = ProfileService.ComputeFileSha256(destination);
+        var successes = 0;
+        var conflicts = 0;
+        Parallel.For(0, 2, index =>
+        {
+            var profile = ProfileService.CloneProfile(original);
+            profile.TotalLoops = 30 + index;
+            try
+            {
+                new ProfileService(directory.Path).Save(profile, destination,
+                    new ProfileSaveOptions(AllowOverwrite: true, ExpectedExistingSha256: hash));
+                Interlocked.Increment(ref successes);
+            }
+            catch (ProfileConflictException)
+            {
+                Interlocked.Increment(ref conflicts);
+            }
+        });
+        TestAssert.Equal(1, successes, "相同旧哈希的并发保存仅一个可提交");
+        TestAssert.Equal(1, conflicts, "第二个同进程保存必须报告冲突");
     }
 
     private static void PersistsV4IdentityAndTimestamps()

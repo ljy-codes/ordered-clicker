@@ -8,6 +8,13 @@ namespace OrderedClicker.Services;
 
 public sealed class WindowsMouseController : IMouseController
 {
+    public bool IsAtPosition(int x, int y)
+    {
+        return NativeMethods.GetCursorPos(out var actual)
+            && Math.Abs((long)actual.X - x) <= 2
+            && Math.Abs((long)actual.Y - y) <= 2;
+    }
+
     public void MoveTo(int x, int y)
     {
         var bounds = SystemInformation.VirtualScreen;

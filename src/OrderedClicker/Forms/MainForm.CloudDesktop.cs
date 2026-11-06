@@ -7,14 +7,18 @@ public sealed partial class MainForm
 {
     private Control BuildCloudDesktopPanel()
     {
-        var panel = new FlowLayoutPanel
+        var panel = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = true,
+            ColumnCount = 1,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
             Padding = new Padding(0, 7, 0, 7),
             BackColor = _theme.Window
         };
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        var cloud = CreateModeOptionsRow();
+        var stability = CreateModeOptionsRow();
 
         _cloudDesktopEnabledCheckBox.Name = "CloudDesktopEnabledCheckBox";
         _cloudDesktopEnabledCheckBox.Text = "云桌面增强";
@@ -38,28 +42,30 @@ public sealed partial class MainForm
         _stabilityTimeoutInput.Name = "StabilityTimeoutInput";
         _stabilityTimeoutInput.Minimum = 3;
         _stabilityTimeoutInput.Maximum = 60;
+        _stabilityTimeoutInput.DecimalPlaces = 3;
+        _stabilityTimeoutInput.Increment = 0.25m;
         _stabilityTimeoutInput.Value = 15;
         _stabilityTimeoutInput.Width = 66;
         ConfigureInput(_stabilityTimeoutInput);
 
-        panel.Controls.Add(_cloudDesktopEnabledCheckBox);
-        panel.Controls.Add(_calibrateRegionButton);
-        panel.Controls.Add(_cloudRegionStatusLabel);
-        panel.Controls.Add(_waitForStableScreenCheckBox);
-        panel.Controls.Add(CreateFieldLabel("超时(秒)"));
-        panel.Controls.Add(_stabilityTimeoutInput);
+        cloud.Controls.Add(_cloudDesktopEnabledCheckBox);
+        cloud.Controls.Add(_calibrateRegionButton);
+        cloud.Controls.Add(_cloudRegionStatusLabel);
+        stability.Controls.Add(_waitForStableScreenCheckBox);
+        stability.Controls.Add(CreateFieldLabel("超时(秒)"));
+        stability.Controls.Add(_stabilityTimeoutInput);
+        panel.Controls.Add(cloud, 0, 0);
+        panel.Controls.Add(stability, 0, 1);
+        BuildSafetyOptions(panel);
 
         _cloudDesktopEnabledCheckBox.CheckedChanged += (_, _) =>
         {
             UpdateCloudDesktopControls();
-            ClearExecutionCheckpoint();
         };
         _calibrateRegionButton.Click += (_, _) => BeginCloudRegionCalibration();
         _waitForStableScreenCheckBox.CheckedChanged += (_, _) =>
         {
-            _stabilityTimeoutInput.Enabled =
-                _waitForStableScreenCheckBox.Checked
-                && _cloudDesktopEnabledCheckBox.Checked;
+            UpdateCloudDesktopControls();
         };
 
         UpdateCloudDesktopControls();
@@ -170,9 +176,10 @@ public sealed partial class MainForm
         var enabled = _cloudDesktopEnabledCheckBox.Checked;
         _calibrateRegionButton.Enabled = enabled
             && _executionState == ExecutionState.Idle;
-        _waitForStableScreenCheckBox.Enabled = enabled;
+        _waitForStableScreenCheckBox.Enabled = _executionState == ExecutionState.Idle;
         _stabilityTimeoutInput.Enabled =
-            enabled && _waitForStableScreenCheckBox.Checked;
+            _executionState == ExecutionState.Idle && _waitForStableScreenCheckBox.Checked;
+        UpdateSafetyOptionsControls(_executionState == ExecutionState.Idle);
         _cloudRegionStatusLabel.Text = _cloudDesktopRegion is null
             ? "未校准"
             : $"已校准 {_cloudDesktopRegion.Width}×{_cloudDesktopRegion.Height}";
@@ -197,10 +204,10 @@ public sealed partial class MainForm
         _cloudDesktopEnabledCheckBox.Checked =
             profile.CoordinateMode == CoordinateMode.CloudDesktopRegion;
         _waitForStableScreenCheckBox.Checked = profile.ScreenStability.Enabled;
-        _stabilityTimeoutInput.Value = Math.Clamp(
-            profile.ScreenStability.TimeoutMs / 1000,
-            decimal.ToInt32(_stabilityTimeoutInput.Minimum),
-            decimal.ToInt32(_stabilityTimeoutInput.Maximum));
+        var timeoutSeconds = Math.Max(0.001m, profile.ScreenStability.TimeoutMs / 1000m);
+        _stabilityTimeoutInput.Minimum = Math.Min(3m, timeoutSeconds);
+        _stabilityTimeoutInput.Maximum = Math.Max(60m, timeoutSeconds);
+        _stabilityTimeoutInput.Value = timeoutSeconds;
         UpdateCloudDesktopControls();
     }
 }

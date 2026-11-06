@@ -10,6 +10,7 @@ using OrderedClicker.Mac.Views;
 using OrderedClicker.Services;
 
 AppBuilder.Configure<App>().UseSkia().UseHeadless(new AvaloniaHeadlessPlatformOptions{UseHeadlessDrawing=false}).SetupWithoutStarting();
+SynchronizationContext.SetSynchronizationContext(new AvaloniaSynchronizationContext());
 var root=Path.Combine(Path.GetTempPath(),"oc-ui-tests-"+Guid.NewGuid());
 try
 {
@@ -42,5 +43,6 @@ try
     Assert(window.GetVisualDescendants().OfType<TextBlock>().Any(t=>t.Text?.Contains("修改")==true),"保存冲突必须显示提示");
     window.Close();Dispatcher.UIThread.RunJobs();
     Console.WriteLine("PASS 5-page navigation, idle safety controls, profile save, loop settings, external-write conflict");
+    MacUiRegressionTests.Run(root);
 }
 finally{Directory.Delete(root,true);}

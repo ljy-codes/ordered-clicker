@@ -13,6 +13,69 @@ internal static class ScreenStabilityDetectorTests
         await HonorsCancellation();
         await PausePreventsSampling();
         await DetectsRgbChannelChanges();
+        await DoesNotSamplePastTheTimeoutBudget();
+        await SlowSamplingConsumesTheTimeoutBudget();
+        await PausedTimeDoesNotConsumeTheTimeoutBudget();
+    }
+
+    private static async Task PausedTimeDoesNotConsumeTheTimeoutBudget()
+    {
+        var gate = new AsyncPauseGate();
+        var paused = false;
+        var detector = new ScreenStabilityDetector(new SequenceScreenSampler([0]),
+            async (_, token) =>
+            {
+                if (!paused)
+                {
+                    paused = true;
+                    gate.Pause();
+                    await Task.Delay(80, token);
+                    gate.Resume();
+                }
+            });
+        var result = await detector.WaitForStableAsync(
+            new ScreenBounds(0, 0, 10, 10), CreateSettings(1, 40),
+            gate, CancellationToken.None);
+        TestAssert.Equal(ScreenStabilityResult.Stable, result,
+            "暂停时间长于超时预算时，恢复后仍应拥有剩余检测预算");
+    }
+
+    private static async Task DoesNotSamplePastTheTimeoutBudget()
+    {
+        var settings = CreateSettings(10, 3);
+        settings.SampleIntervalMs = 10;
+        var waited = 0;
+        var detector = new ScreenStabilityDetector(new SequenceScreenSampler([0]),
+            (duration, _) =>
+            {
+                waited += (int)duration.TotalMilliseconds;
+                return Task.CompletedTask;
+            });
+        var result = await detector.WaitForStableAsync(
+            new ScreenBounds(0, 0, 10, 10), settings, CancellationToken.None);
+        TestAssert.Equal(ScreenStabilityResult.TimedOut, result,
+            "超时时间短于稳定阈值时不得误判稳定");
+        TestAssert.True(waited <= 3, "采样等待不得超过剩余超时预算");
+    }
+
+    private static async Task SlowSamplingConsumesTheTimeoutBudget()
+    {
+        var settings = CreateSettings(1, 10);
+        var result = await new ScreenStabilityDetector(new SlowSampler(),
+                (_, _) => Task.CompletedTask)
+            .WaitForStableAsync(new ScreenBounds(0, 0, 10, 10),
+                settings, CancellationToken.None);
+        TestAssert.Equal(ScreenStabilityResult.TimedOut, result,
+            "采样本身耗时也必须计入超时，不能仅累计配置间隔");
+    }
+
+    private sealed class SlowSampler : IScreenSampler
+    {
+        public async Task<byte[]> SampleAsync(ScreenBounds region, CancellationToken cancellationToken)
+        {
+            await Task.Delay(40, cancellationToken);
+            return [0];
+        }
     }
 
     private static async Task PausePreventsSampling()

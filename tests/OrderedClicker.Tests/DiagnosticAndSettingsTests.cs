@@ -6,8 +6,64 @@ internal static class DiagnosticAndSettingsTests
 {
     public static void Run()
     {
+        PreservesTemporarilyUnreadableSettings();
+        PreservesBrokenSettingsWhenQuarantineIsLocked();
         QuarantinesBrokenSettings();
         WritesActionableDiagnosticLog();
+    }
+
+    private static void PreservesTemporarilyUnreadableSettings()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using var directory = new TemporaryDirectory();
+        var path = Path.Combine(directory.Path, "settings.json");
+        var service = new SettingsService(path);
+        service.Save(new OrderedClicker.Models.AppSettings());
+        var original = File.ReadAllText(path);
+        SettingsLoadResult result;
+        using (var locked = new FileStream(path, FileMode.Open, FileAccess.ReadWrite,
+                   FileShare.None))
+        {
+            result = service.LoadWithResult();
+            TestAssert.True(result.Warning is not null
+                && !result.Warning.Contains("损坏", StringComparison.Ordinal),
+                "访问失败应报告读取警告而不是损坏");
+            TestAssert.True(result.BrokenSettingsPath is null, "访问失败不得隔离文件");
+        }
+
+        TestAssert.Throws<IOException>(() => service.Save(result.Settings),
+            "读取失败后的默认设置不得在锁释放后静默覆盖原文件");
+        TestAssert.Equal(original, File.ReadAllText(path), "读取失败后原设置必须保持");
+        service.LoadWithResult();
+        service.Save(result.Settings);
+    }
+
+    private static void PreservesBrokenSettingsWhenQuarantineIsLocked()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using var directory = new TemporaryDirectory();
+        var path = Path.Combine(directory.Path, "settings.json");
+        File.WriteAllText(path, "{broken");
+        var service = new SettingsService(path);
+        SettingsLoadResult result;
+        using (var reader = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            result = service.LoadWithResult();
+        }
+
+        TestAssert.True(result.Warning is not null, "隔离失败仍应返回默认设置和警告");
+        TestAssert.True(result.BrokenSettingsPath is null, "隔离失败不得声称存在隔离副本");
+        TestAssert.Equal("{broken", File.ReadAllText(path), "隔离失败必须保留原文件");
+        TestAssert.Throws<IOException>(() => service.Save(result.Settings),
+            "隔离失败后普通保存不得覆盖原文件");
     }
 
     private static void QuarantinesBrokenSettings()

@@ -191,7 +191,7 @@ def page_header_footer(canvas, doc) -> None:
     canvas.line(18 * mm, 14 * mm, width - 18 * mm, 14 * mm)
     canvas.setFont(GUIDE_FONT_NAME, 7.5)
     canvas.setFillColor(MUTED)
-    canvas.drawString(18 * mm, height - 10 * mm, "有序连点器 2.1.0 使用说明")
+    canvas.drawString(18 * mm, height - 10 * mm, "有序连点器 2.2.0 使用说明")
     canvas.drawRightString(width - 18 * mm, 9 * mm, f"第 {doc.page} 页")
     canvas.restoreState()
 
@@ -201,25 +201,25 @@ def build_story(style_map) -> list:
 
     story += [
         Spacer(1, 12 * mm),
-        p("有序连点器 2.1.0", style_map["title"]),
+        p("有序连点器 2.2.0", style_map["title"]),
         p(
             "Windows 10/11 x64 · 五步式工作台 · v4 .oclick 方案 · "
             "草稿恢复 · 可靠断点 · 双重停止保护",
             style_map["subtitle"],
         ),
-        screenshot("ordered-clicker-ui-v2.0.0.png", 172 * mm),
+        screenshot("ordered-clicker-run-v2.2.0.png", 172 * mm),
         Spacer(1, 7 * mm),
         table(
             [
                 ["适用用户", "核心能力", "文档日期"],
-                ["普通桌面和云桌面用户", "有序点位、循环、稳定检测、暂停继续和日志", "2026-09-24"],
+                ["普通桌面和云桌面用户", "有序点位、循环、稳定检测、暂停继续和日志", "2026-11-06"],
             ],
             [48 * mm, 82 * mm, 42 * mm],
             style_map,
         ),
         Spacer(1, 7 * mm),
         callout(
-            "安全提醒：程序会真实移动并点击鼠标。首次使用只设置 1 轮，"
+            "安全提醒：先演练核对落点。正式执行和单步会真实点击鼠标，首次试运行只设置 1 轮，"
             "在没有支付、删除或提交风险的页面测试。任何时候可按 F8 或触发安全角停止。",
             style_map,
             RED,
@@ -269,6 +269,7 @@ def build_story(style_map) -> list:
             [
                 "“保存”覆盖当前绑定文件；“另存为”创建新的方案身份。",
                 "“打开方案”用于任意位置的 v4 .oclick 文件。",
+                "2.2.0 保持 v4，兼容 2.0.0 / 2.1.0 的 v4 方案，新增设置缺省时沿用旧行为。",
                 "默认方案目录只列出 .oclick 文件，避免把旧 JSON 当作当前方案直接编辑。",
             ],
             style_map["bullet"],
@@ -349,6 +350,7 @@ def build_story(style_map) -> list:
             style_map["bullet"],
         ),
         screenshot("ordered-clicker-settings-v2.0.0.png", 126 * mm),
+        p("历史设置页示例，实际操作以当前界面为准。", style_map["small"]),
         PageBreak(),
     ]
 
@@ -381,6 +383,42 @@ def build_story(style_map) -> list:
     ]
 
     story += [
+        p("演练、单步与窗口绑定", style_map["section"]),
+        p("演练：只移动，不点击", style_map["heading"]),
+        *bullets(
+            [
+                "按启用点位顺序移动鼠标，不点击，实际点击数为 0，不改变正式执行断点。",
+                "核对每个落点和页面布局后再正式执行。鼠标移动仍可能触发悬停效果。",
+                "F8 和安全角仍可停止演练；演练不能证明按钮点击后的业务结果正确。",
+            ],
+            style_map["bullet"],
+        ),
+        p("单步：完整一个点后暂停", style_map["heading"]),
+        *bullets(
+            [
+                "执行当前点的全部连击、点击间隔、点后等待和已启用的稳定检查，然后在下一点前暂停。",
+                "单步不是只点击一次。先核对该点点击次数；继续下一步仍会产生真实点击。",
+            ],
+            style_map["bullet"],
+        ),
+        p("可选窗口绑定", style_map["heading"]),
+        *bullets(
+            [
+                "在当前平台绑定目标窗口后，启动或继续时需切到目标窗口并保持可见。",
+                "窗口不匹配或落点被其他窗口遮挡时暂停。排除遮挡、切回目标窗口，核对页面后再继续。",
+                "不绑定时仍按屏幕坐标执行。绑定不识别按钮、不向后台窗口点击；跨平台需重新绑定。",
+            ],
+            style_map["bullet"],
+        ),
+        callout(
+            "不要用旧版程序执行依赖 2.2.0 窗口保护的方案。"
+            "无论是否绑定，都应保持目标窗口位置和页面布局与采点时一致。",
+            style_map,
+        ),
+        PageBreak(),
+    ]
+
+    story += [
         p("06 云桌面与画面稳定", style_map["section"]),
         p("校准相对坐标", style_map["heading"]),
         *bullets(
@@ -397,6 +435,9 @@ def build_story(style_map) -> list:
                 "程序使用低分辨率 RGB 采样比较画面变化，减少长流程 CPU 和内存占用。",
                 "检测期间同样响应暂停和停止。",
                 "超过超时时间仍不稳定时自动暂停；确认页面可操作后按 F7 继续。",
+                "自定义检测区域：只框选需等待稳定的页面，避开视频、动画和时钟。",
+                "未设置时仍采样云桌面校准区域或虚拟桌面。区域仅影响画面采样，不改变点击坐标。",
+                "窗口移动或显示器变化后重新检查区域；确认页面后再调整容差、稳定时长或超时。",
             ],
             style_map["bullet"],
         ),
@@ -406,6 +447,7 @@ def build_story(style_map) -> list:
             style_map,
             BLUE,
         ),
+        screenshot("ordered-clicker-mode-v2.2.0.png", 140 * mm),
         PageBreak(),
     ]
 
@@ -434,6 +476,7 @@ def build_story(style_map) -> list:
             style_map["bullet"],
         ),
         screenshot("ordered-clicker-help-v2.0.0.png", 145 * mm),
+        p("历史帮助页示例，2.2.0 功能以文字说明和当前界面为准。", style_map["small"]),
         PageBreak(),
     ]
 
@@ -442,7 +485,7 @@ def build_story(style_map) -> list:
         table(
             [
                 ["交付文件", "用途"],
-                ["ordered-clicker-setup-v2.1.0.exe", "当前用户安装版"],
+                ["ordered-clicker-setup-v2.2.0.exe", "当前用户安装版"],
                 ["有序连点器-免安装.exe", "单文件免安装版"],
                 ["有序连点器-使用说明.pdf", "离线 PDF 说明"],
                 ["有序连点器-使用说明.html", "自包含 HTML 说明"],
@@ -464,7 +507,7 @@ def build_story(style_map) -> list:
         ),
         Spacer(1, 12 * mm),
         callout(
-            "版本：2.1.0\n文档日期：2026-09-24\n"
+            "版本：2.2.0\n文档日期：2026-11-06\n"
             "本说明与五步工作台、v4 方案、安全角和五文件交付保持一致。",
             style_map,
             GREEN,
@@ -484,9 +527,9 @@ def main() -> None:
         leftMargin=18 * mm,
         topMargin=18 * mm,
         bottomMargin=19 * mm,
-        title="有序连点器 2.1.0 使用说明",
+        title="有序连点器 2.2.0 使用说明",
         author="Ordered Clicker",
-        subject="有序连点器 2.1.0 操作指导",
+        subject="有序连点器 2.2.0 操作指导",
     )
     document.build(
         build_story(style_map),

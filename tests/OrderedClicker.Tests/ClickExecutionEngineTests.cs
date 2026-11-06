@@ -8,6 +8,7 @@ internal static class ClickExecutionEngineTests
 {
     public static async Task RunAsync()
     {
+        await RepositionsWhenResumingAClickCheckpoint();
         await ExecutesPointsInOrderForEveryLoop();
         await SkipsDisabledPoints();
         await WaitsWhilePaused();
@@ -17,6 +18,29 @@ internal static class ClickExecutionEngineTests
         await ResumesIncompleteAfterPointDelay();
         await PauseFreezesDelayConsumption();
         await DoesNotRepeatIndeterminateClick();
+    }
+
+    private static async Task RepositionsWhenResumingAClickCheckpoint()
+    {
+        foreach (var stage in new[] { ExecutionStage.Click, ExecutionStage.ClickInterval })
+        {
+            var mouse = new RecordingMouseController();
+            var plan = ExecutionPlanService.Create(
+                new ClickProfile { Points = [CreatePoint(10, 20, 2)] },
+                new ScreenBounds(0, 0, 1920, 1080));
+            var result = await new ClickExecutionEngine(mouse, (_, _) => Task.CompletedTask)
+                .ExecuteAsync(
+                    plan,
+                    new ExecutionCheckpoint(0, 0, 1, stage, 0, 1),
+                    new AsyncPauseGate(),
+                    null,
+                    CancellationToken.None);
+
+            TestAssert.Equal(ExecutionOutcome.Completed, result.Outcome,
+                "恢复点击断点后应完整完成");
+            TestAssert.Equal("M:10,20|C", string.Join("|", mouse.Events),
+                "从点击或间隔断点恢复时必须先定位再发送剩余点击");
+        }
     }
 
     private static async Task ResumesIncompleteAfterPointDelay()
@@ -158,7 +182,7 @@ internal static class ClickExecutionEngineTests
 
         await engine.ExecuteAsync(profile, new AsyncPauseGate(), null, CancellationToken.None);
 
-        TestAssert.Equal("M:10,20|C|C|M:30,40|C|M:10,20|C|C|M:30,40|C",
+        TestAssert.Equal("M:10,20|C|M:10,20|C|M:30,40|C|M:10,20|C|M:10,20|C|M:30,40|C",
             string.Join("|", mouse.Events), "执行顺序、单点次数和总循环次数应一致");
     }
 

@@ -17,7 +17,8 @@ def image_data(name: str) -> str:
 
 
 def main() -> None:
-    main_image = image_data("ordered-clicker-ui-v2.0.0.png")
+    main_image = image_data("ordered-clicker-run-v2.2.0.png")
+    mode_image = image_data("ordered-clicker-mode-v2.2.0.png")
     settings_image = image_data("ordered-clicker-settings-v2.0.0.png")
     help_image = image_data("ordered-clicker-help-v2.0.0.png")
     html = f"""<!doctype html>
@@ -25,7 +26,7 @@ def main() -> None:
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>有序连点器 2.1.0 使用说明</title>
+  <title>有序连点器 2.2.0 使用说明</title>
   <style>
     :root {{
       color-scheme: dark;
@@ -89,10 +90,10 @@ def main() -> None:
 </head>
 <body>
   <header>
-    <h1>有序连点器 2.1.0</h1>
+    <h1>有序连点器 2.2.0</h1>
     <p class="subtitle">面向普通用户和云桌面长流程的五步式操作说明。新版本使用 v4 <code>.oclick</code> 方案、活动草稿、可靠断点和双重停止保护。</p>
-    <div class="meta"><span>适用：Windows 10/11 x64</span><span>更新：2026-09-24</span><span>默认快捷键：F6 / F7 / F8</span></div>
-    <img class="hero-image" alt="有序连点器 2.1.0 主界面" src="data:image/png;base64,{main_image}">
+    <div class="meta"><span>适用：Windows 10/11 x64</span><span>更新：2026-11-06</span><span>默认快捷键：F6 / F7 / F8</span></div>
+    <img class="hero-image" alt="有序连点器 2.2.0 运行页" src="data:image/png;base64,{main_image}">
   </header>
   <main>
     <section>
@@ -104,7 +105,7 @@ def main() -> None:
         <div class="step"><strong>4 检查</strong>核对点击数、预计耗时、显示器和安全停止。</div>
         <div class="step"><strong>5 运行</strong>确认后倒计时开始，F7 暂停/继续，F8 停止。</div>
       </div>
-      <div class="warning danger"><strong>首次使用：</strong>只设置 1 轮，在无支付、删除或提交风险的页面测试。程序会真实移动并点击鼠标。</div>
+      <div class="warning danger"><strong>首次使用：</strong>先演练核对落点，再只设置 1 轮，在无支付、删除或提交风险的页面试运行。正式执行和单步会真实点击鼠标。</div>
     </section>
 
     <section>
@@ -114,6 +115,7 @@ def main() -> None:
           <h3>v4 方案</h3>
           <ul>
             <li>新方案扩展名为 <code>.oclick</code>。</li>
+            <li>2.2.0 保持 v4，兼容 2.0.0 / 2.1.0 的 v4 方案；新增设置缺省时沿用旧行为。</li>
             <li>“保存”覆盖当前绑定文件；“另存为”创建新的方案身份。</li>
             <li>“打开方案”用于任意位置的 v4 文件。</li>
           </ul>
@@ -162,7 +164,23 @@ def main() -> None:
         <div class="panel"><h3>重叠检查</h3><p>任何启用点位落在安全角内都会阻止执行，必须移动点位或更换安全角。</p></div>
         <div class="panel"><h3>置顶状态</h3><p>运行时状态小窗保持置顶，显示当前阶段，并提供暂停/继续和停止按钮。</p></div>
       </div>
-      <img class="screen" alt="设置和安全角" src="data:image/png;base64,{settings_image}">
+      <img class="screen" alt="设置和安全角（历史界面示例）" src="data:image/png;base64,{settings_image}">
+      <p class="subtitle">此设置页截图为历史界面示例，实际操作以当前界面为准。</p>
+    </section>
+
+    <section>
+      <h2>演练、单步与窗口绑定</h2>
+      <h3>演练：只移动，不点击</h3>
+      <p>按启用点位顺序移动鼠标，实际点击数为 0，不改变正式执行断点。先核对落点是否落在正确控件上，再切换为正式执行。鼠标移动仍可能触发悬停效果；F8 和安全角仍可停止。</p>
+      <h3>单步：完整一个点后暂停</h3>
+      <p>单步执行当前点的全部连击、点击间隔、点后等待和已启用的稳定检查，然后在下一点前暂停。它不是只点击一次；开始前确认当前点的点击次数和页面状态，继续下一步会产生真实点击。</p>
+      <h3>可选窗口绑定</h3>
+      <ol>
+        <li>在当前平台为方案绑定目标窗口；不绑定时仍按屏幕坐标执行。</li>
+        <li>启动或继续时，需切到目标窗口，保持窗口可见且布局与采点时一致。</li>
+        <li>窗口不匹配或落点被遮挡时暂停。移开遮挡、切回目标窗口，确认页面后再继续。</li>
+      </ol>
+      <p>绑定不会自动识别按钮，也不向后台窗口发送点击。跨平台打开方案后需重新绑定；旧版程序不能提供 2.2.0 的窗口保护。</p>
     </section>
 
     <section>
@@ -174,6 +192,9 @@ def main() -> None:
         <li>窗口移动或大小变化后重新校准；有效相对坐标会保留，只补齐缺失值。</li>
       </ol>
       <p>开启画面稳定检测后，程序使用低分辨率 RGB 采样判断变化。超过超时时间仍不稳定会暂停，确认页面可操作后按 F7 继续。</p>
+      <h3>自定义检测区域</h3>
+      <p>框选需要等待稳定的页面内容，避开视频、动画和时钟。未设置时沿用云桌面校准区域或虚拟桌面范围，兼容旧方案。检测区域仅用于画面采样，不改变点击坐标。窗口移动或显示器变化后重新检查区域；持续超时时，确认页面可操作后再调整变化容差、稳定时长或超时。</p>
+      <img class="screen" alt="有序连点器 2.2.0 模式页：窗口绑定与检测区域" src="data:image/png;base64,{mode_image}">
     </section>
 
     <section>
@@ -196,12 +217,13 @@ def main() -> None:
         <tr><td><code>diagnostics</code></td><td>设置、方案和运行异常信息。</td></tr>
       </table>
       <p>安装版根目录是 <code>%LocalAppData%\\OrderedClicker</code>。免安装版根目录是程序旁的 <code>OrderedClickerData</code>；目录不可写时会明确报错，不会偷偷回退。</p>
-      <img class="screen" alt="程序内使用说明" src="data:image/png;base64,{help_image}">
+      <img class="screen" alt="程序内使用说明（历史界面示例）" src="data:image/png;base64,{help_image}">
+      <p class="subtitle">此帮助页截图为历史界面示例，2.2.0 功能以本说明和当前界面为准。</p>
     </section>
 
     <section>
       <h2>交付文件与校验</h2>
-      <pre><code>ordered-clicker-setup-v2.1.0.exe
+      <pre><code>ordered-clicker-setup-v2.2.0.exe
 有序连点器-免安装.exe
 有序连点器-使用说明.pdf
 有序连点器-使用说明.html
@@ -209,7 +231,7 @@ SHA256SUMS.txt</code></pre>
       <p>使用 <code>SHA256SUMS.txt</code> 核对安装包、免安装程序和两份说明文件。正式 Release 构建还会验证应用和安装器的 Authenticode 签名及时间戳。</p>
     </section>
   </main>
-  <footer>有序连点器 2.1.0 · 使用说明 · 2026-09-24</footer>
+  <footer>有序连点器 2.2.0 · 使用说明 · 2026-11-06</footer>
 </body>
 </html>
 """

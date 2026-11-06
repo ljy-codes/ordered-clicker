@@ -12,6 +12,69 @@ internal static class ProfileValidatorTests
         AcceptsNegativeCoordinatesInsideVirtualScreen();
         RejectsMissingEnabledPoints();
         RejectsOutOfBoundsPointAndInvalidDelays();
+        ValidatesTheEntireCustomStabilityRegion();
+        RejectsIncompleteTargetWindowBindings();
+    }
+
+    private static void ValidatesTheEntireCustomStabilityRegion()
+    {
+        var profile = CreateValidProfile();
+        var desktop = new ScreenBounds(-100, -50, 300, 200);
+        foreach (var region in new[]
+                 {
+                     new ScreenBounds(0, 0, 0, 10),
+                     new ScreenBounds(0, 0, 10, -1),
+                     new ScreenBounds(-101, 0, 20, 20),
+                     new ScreenBounds(0, -51, 20, 20),
+                     new ScreenBounds(190, 0, 11, 20),
+                     new ScreenBounds(0, 140, 20, 11),
+                     new ScreenBounds(100, 0, int.MaxValue, 20)
+                 })
+        {
+            profile.ScreenStability.Region = region;
+            TestAssert.True(ProfileValidator.Validate(profile, desktop).Any(error =>
+                    error.Contains("区域", StringComparison.Ordinal)),
+                "自定义区域必须尺寸为正且完全在虚拟桌面内，不能溢出绕过校验");
+        }
+
+        foreach (var region in new[]
+                 {
+                     desktop,
+                     new ScreenBounds(-100, -50, 1, 1),
+                     new ScreenBounds(199, 149, 1, 1)
+                 })
+        {
+            profile.ScreenStability.Region = region;
+            TestAssert.Equal(0, ProfileValidator.Validate(profile, desktop).Count,
+                "桌面边缘及负坐标内有效区域应通过校验");
+        }
+    }
+
+    private static void RejectsIncompleteTargetWindowBindings()
+    {
+        var profile = CreateValidProfile();
+        var desktop = new ScreenBounds(0, 0, 200, 200);
+        foreach (var binding in new[]
+                 {
+                     new TargetWindowBinding(),
+                     new TargetWindowBinding { Platform = "windows", WindowTitle = "title" },
+                     new TargetWindowBinding { Platform = "windows", ApplicationId = "app" }
+                 })
+        {
+            profile.TargetWindow = binding;
+            TestAssert.True(ProfileValidator.Validate(profile, desktop).Any(error =>
+                    error.Contains("窗口", StringComparison.Ordinal)),
+                "不完整窗口绑定必须拒绝");
+        }
+
+        profile.TargetWindow = new TargetWindowBinding
+        {
+            Platform = "macos", ApplicationId = "app", WindowTitle = "title"
+        };
+        TestAssert.Equal(0, ProfileValidator.Validate(profile, desktop).Count,
+            "共享校验应接受完整的平台绑定，当前平台匹配由适配器检查");
+        profile.TargetWindow = null;
+        TestAssert.Equal(0, ProfileValidator.Validate(profile, desktop).Count, "空绑定应关闭窗口保护");
     }
 
     private static void RejectsInvalidLoopCount()

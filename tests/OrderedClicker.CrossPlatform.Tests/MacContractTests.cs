@@ -6,6 +6,7 @@ internal static class MacContractTests
 {
     public static Task RunAsync()
     {
+        MacPlanValidationTests.Run();
         var screen=new MonitorSnapshot("mac:1",new(0,0,1440,900),192);
         var point=new ClickPoint{X=300,Y=200,MonitorDeviceName=screen.DeviceName,MonitorBounds=screen.Bounds,CapturedDpi=screen.Dpi};
         var profile=new ClickProfile{Points=[point]};var settings=new AppSettings();

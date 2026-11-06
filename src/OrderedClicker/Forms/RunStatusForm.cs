@@ -71,7 +71,7 @@ internal sealed class RunStatusForm : Form
     {
         _stateLabel.Text = state;
         _pauseButton.Text = paused ? "继续" : "暂停";
-        _pauseButton.Enabled = state is "执行中" or "已暂停";
+        _pauseButton.Enabled = state is "执行中" or "已暂停" or "演练中" or "单步执行中";
     }
 
     public void UpdateProgress(string message)

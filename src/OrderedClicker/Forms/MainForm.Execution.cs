@@ -21,14 +21,17 @@ public sealed partial class MainForm
                 SetStatus($"执行已暂停，按 {StartPauseHotKeyText} 继续。");
                 break;
             case ExecutionState.Paused:
-                _pauseGate.Resume();
-                SetExecutionState(ExecutionState.Running);
-                SetStatus("继续执行。");
+                await ResumeExecutionAsync();
                 break;
         }
     }
 
     private async Task StartExecutionAsync()
+    {
+        await StartExecutionAsync(ExecutionRunMode.Normal);
+    }
+
+    private async Task StartExecutionAsync(ExecutionRunMode mode)
     {
         if (_executionStartInProgress
             || _activeExecutionTask is { IsCompleted: false })
@@ -38,7 +41,7 @@ public sealed partial class MainForm
         }
 
         _executionStartInProgress = true;
-        var executionTask = StartExecutionCoreAsync();
+        var executionTask = StartExecutionCoreAsync(mode);
         _activeExecutionTask = executionTask;
         try
         {
@@ -54,7 +57,7 @@ public sealed partial class MainForm
         }
     }
 
-    private async Task StartExecutionCoreAsync()
+    private async Task StartExecutionCoreAsync(ExecutionRunMode mode)
     {
         ExecutionPlan plan;
         ExecutionCheckpoint checkpoint;
@@ -73,7 +76,7 @@ public sealed partial class MainForm
             return;
         }
 
-        if (_pendingExecutionPlan is not null)
+        if (mode != ExecutionRunMode.Rehearsal && _pendingExecutionPlan is not null)
         {
             CommitGridChanges();
             var currentFingerprint = ExecutionPlanFingerprintService.Create(
@@ -83,12 +86,12 @@ public sealed partial class MainForm
                     _pendingExecutionPlan.ProfileFingerprint,
                     StringComparison.Ordinal))
             {
-                ClearExecutionCheckpoint();
-                SetStatus("执行配置已变化，旧断点已失效，请重新确认计划。");
+                ShowError("当前方案与断点不匹配。请打开对应方案，或选择“重新开始”重新确认计划。");
+                return;
             }
         }
 
-        if (_pendingExecutionPlan is not null)
+        if (mode != ExecutionRunMode.Rehearsal && _pendingExecutionPlan is not null)
         {
             plan = _pendingExecutionPlan;
             checkpoint = _executionCheckpoint;
@@ -123,7 +126,7 @@ public sealed partial class MainForm
                 return;
             }
 
-            using var planDialog = new ExecutionPlanDialog(plan, _theme);
+            using var planDialog = new ExecutionPlanDialog(plan, _theme, mode);
             if (planDialog.ShowDialog(this) != DialogResult.OK)
             {
                 return;
@@ -132,6 +135,30 @@ public sealed partial class MainForm
             checkpoint = ExecutionCheckpoint.Start;
         }
 
+        var currentScreen = _monitorService.GetVirtualScreenBounds();
+        var currentProfile = CreateProfileSnapshot();
+        var currentErrors = ProfileValidator.Validate(currentProfile, currentScreen);
+        if (plan.VirtualScreen != currentScreen || currentErrors.Count > 0)
+        {
+            ShowError("当前显示范围与计划不匹配，请重新检查点位并生成计划。"
+                + (currentErrors.Count == 0 ? string.Empty
+                    : Environment.NewLine + string.Join(Environment.NewLine, currentErrors)));
+            return;
+        }
+        if (!WindowsExecutionEnvironment.IsInputDesktopAvailable())
+        {
+            ShowError("当前桌面不可操作，请解锁后重新执行。");
+            return;
+        }
+        var resumeWarnings = GetMonitorWarnings(currentProfile);
+        if (_pendingExecutionPlan is not null && resumeWarnings.Count > 0
+            && !ConfirmMonitorWarnings(resumeWarnings))
+        {
+            return;
+        }
+        var displaySignature = WindowsExecutionEnvironment.CaptureDisplaySignature(_monitorService);
+        Interlocked.Exchange(ref _executionEnvironmentChanged, 0);
+        _activeRunMode = mode;
         var safetyCornerPoint = plan.Points.FirstOrDefault(point =>
             SafetyCornerService.Contains(
                 new Point(point.X, point.Y),
@@ -148,6 +175,8 @@ public sealed partial class MainForm
 
         _captureMode = CaptureMode.Idle;
         CancelDelayedCapture();
+        _windowBindingCancellation?.Cancel();
+        CloseCaptureHud();
         _latestExecutionProgress.Clear();
         UpdateCaptureButton();
         _pauseGate.Resume();
@@ -174,7 +203,9 @@ public sealed partial class MainForm
             for (var seconds = 3; seconds >= 1; seconds--)
             {
                 SetStatus(
-                    _pendingExecutionPlan is null
+                    mode == ExecutionRunMode.Rehearsal
+                        ? $"{seconds} 秒后开始演练，请切换到目标窗口。"
+                        : _pendingExecutionPlan is null
                         ? $"{seconds} 秒后开始，请切换到目标窗口。"
                         : $"{seconds} 秒后从断点继续，请切换到目标窗口。");
                 await Task.Delay(
@@ -189,11 +220,19 @@ public sealed partial class MainForm
                     checkpoint,
                     _pauseGate,
                     _latestExecutionProgress,
-                    executionCancellation.Token));
+                    executionCancellation.Token,
+                    new ExecutionRunOptions
+                    {
+                        Mode = mode,
+                        SafetyCheck = point => CheckExecutionSafety(plan, point, displaySignature)
+                    }));
 
             try
             {
-                _executionLogService.Write(plan, result);
+                if (mode != ExecutionRunMode.Rehearsal)
+                {
+                    _executionLogService.Write(plan, result);
+                }
             }
             catch (Exception logException)
             {
@@ -205,13 +244,20 @@ public sealed partial class MainForm
         }
         catch (OperationCanceledException)
         {
-            PreserveExecutionCheckpoint(plan, checkpoint);
-            SetStatus("执行在启动前停止，可再次继续。");
+            if (mode != ExecutionRunMode.Rehearsal)
+            {
+                PreserveExecutionCheckpoint(plan, checkpoint);
+            }
+            SetStatus(mode == ExecutionRunMode.Rehearsal
+                ? "演练已停止，正式断点保留。" : "执行在启动前停止，可再次继续。");
         }
         catch (Exception exception)
         {
             RecordDiagnostic("execution.run", exception);
-            PreserveExecutionCheckpoint(plan, checkpoint);
+            if (mode != ExecutionRunMode.Rehearsal)
+            {
+                PreserveExecutionCheckpoint(plan, checkpoint);
+            }
             ShowError($"执行失败：{exception.Message}");
         }
         finally
@@ -249,6 +295,13 @@ public sealed partial class MainForm
 
     private void HandleExecutionResult(ExecutionPlan plan, ExecutionResult result)
     {
+        if (_activeRunMode == ExecutionRunMode.Rehearsal)
+        {
+            SetStatus(result.Outcome == ExecutionOutcome.Completed
+                ? "演练完成，未发送点击，正式执行断点保留。"
+                : $"演练已结束：{result.Message}，正式执行断点保留。");
+            return;
+        }
         if (result.Outcome == ExecutionOutcome.Completed
             && result.CompletedPointExecutionCount == plan.PlannedPointExecutionCount
             && result.CompletedClickCount == plan.PlannedClickCount)
@@ -311,6 +364,13 @@ public sealed partial class MainForm
     {
         if (_executionState == ExecutionState.Idle)
         {
+            CancelDelayedCapture();
+            _windowBindingCancellation?.Cancel();
+            _captureMode = CaptureMode.Idle;
+            _cloudRegionTopLeft = null;
+            _stabilityRegionTopLeft = null;
+            CloseCaptureHud();
+            UpdateCaptureButton();
             return;
         }
 
@@ -334,7 +394,7 @@ public sealed partial class MainForm
             + $"总点击 {progress.CompletedClickCount}/{progress.PlannedClickCount}，"
             + $"阶段 {DescribeExecutionStage(progress.Stage)}";
         _runStatusForm?.UpdateProgress(_progressStatusLabel.Text);
-        if (_activeExecutionPlan is not null)
+        if (_activeExecutionPlan is not null && _activeRunMode != ExecutionRunMode.Rehearsal)
         {
             var checkpoint = new ExecutionCheckpoint(
                 Math.Max(0, progress.CurrentLoop - 1),
@@ -410,11 +470,11 @@ public sealed partial class MainForm
         }
     }
 
-    private void RecoverExecutionCheckpointIfAvailable()
+    private bool RecoverExecutionCheckpointIfAvailable()
     {
         if (_executionCheckpointService is null)
         {
-            return;
+            return false;
         }
 
         try
@@ -422,7 +482,7 @@ public sealed partial class MainForm
             var envelope = _executionCheckpointService.Load();
             if (envelope is null)
             {
-                return;
+                return false;
             }
 
             var restore = MessageBox.Show(
@@ -435,14 +495,11 @@ public sealed partial class MainForm
             if (!restore)
             {
                 _executionCheckpointService.Clear();
-                return;
+                return false;
             }
 
-            _pendingExecutionPlan = envelope.Plan;
-            _executionCheckpoint = envelope.Checkpoint;
-            _restartButton.Visible = true;
-            SetExecutionState(ExecutionState.Idle);
-            SetStatus($"已恢复执行断点，可从第 {GetResumeSourceRow()} 步继续。");
+            ApplyRecoveredExecutionCheckpoint(envelope);
+            return true;
         }
         catch (Exception exception)
         {
@@ -459,6 +516,77 @@ public sealed partial class MainForm
             }
 
             SetStatus("执行断点已损坏并隔离，本次将重新开始。");
+            return false;
+        }
+    }
+
+    private void ApplyRecoveredExecutionCheckpoint(ExecutionCheckpointEnvelope envelope)
+    {
+        var source = envelope.Plan.SourceProfile;
+        if (source is null && _draftService?.Exists == true)
+        {
+            try
+            {
+                var draft = _draftService.Load();
+                if (draft is not null
+                    && string.Equals(ExecutionPlanFingerprintService.Create(draft.Profile),
+                        envelope.PlanFingerprint, StringComparison.Ordinal))
+                {
+                    source = draft.Profile;
+                }
+            }
+            catch (Exception exception)
+            {
+                RecordDiagnostic("execution.checkpoint.draft", exception);
+            }
+        }
+        if (source is not null)
+        {
+            if (!string.Equals(ExecutionPlanFingerprintService.Create(source),
+                    envelope.PlanFingerprint, StringComparison.Ordinal))
+            {
+                throw new InvalidDataException("断点与保存的方案快照不匹配。");
+            }
+            ApplyProfile(source);
+            _currentProfilePath = null;
+            _currentProfileFileHash = null;
+            _baselineProfile = null;
+            _saveImportedProfileAsCopy = false;
+            _importedProfileSourcePath = null;
+            _lastDraftSnapshot = ProfileService.CloneProfile(source);
+        }
+        _pendingExecutionPlan = envelope.Plan;
+        _executionCheckpoint = envelope.Checkpoint;
+        _restartButton.Visible = true;
+        SetExecutionState(ExecutionState.Idle);
+        SetStatus(source is null
+            ? "旧版断点已保留。请先打开对应的原方案，再继续执行；也可选择重新开始。"
+            : $"已恢复方案和执行断点，可从第 {GetResumeSourceRow()} 步继续。");
+    }
+
+    private async Task ResumeExecutionAsync()
+    {
+        var cancellation = _executionCancellation;
+        if (cancellation is null || cancellation.IsCancellationRequested)
+        {
+            return;
+        }
+        SetExecutionState(ExecutionState.Countdown);
+        try
+        {
+            for (var seconds = 3; seconds > 0; seconds--)
+            {
+                SetStatus($"{seconds} 秒后继续，请切换到目标窗口。");
+                await Task.Delay(1000, cancellation.Token);
+            }
+            cancellation.Token.ThrowIfCancellationRequested();
+            SetExecutionState(ExecutionState.Running);
+            _pauseGate.Resume();
+            SetStatus(_activeRunMode == ExecutionRunMode.Step ? "执行下一点位。" : "继续执行。");
+        }
+        catch (OperationCanceledException)
+        {
+            // The active execution task handles checkpoint persistence and cleanup.
         }
     }
 
@@ -508,6 +636,14 @@ public sealed partial class MainForm
             or ExecutionState.Running
             or ExecutionState.Paused;
         _stopButton.Enabled = state != ExecutionState.Idle;
+        _rehearsalButton.Enabled = state == ExecutionState.Idle;
+        _stepButton.Enabled = state == ExecutionState.Idle;
+        if (state == ExecutionState.Running && _activeRunMode != ExecutionRunMode.Normal)
+        {
+            _stateStatusLabel.Text = _activeRunMode == ExecutionRunMode.Step ? "单步执行中" : "演练中";
+            _workspaceStateLabel.Text = _stateStatusLabel.Text;
+            _runStatusForm?.UpdateState(_stateStatusLabel.Text, false);
+        }
         _restartButton.Visible =
             state == ExecutionState.Idle && _pendingExecutionPlan is not null;
     }
@@ -561,6 +697,7 @@ public sealed partial class MainForm
         _moveDownButton.Enabled = enabled;
         _deleteButton.Enabled = enabled;
         _clearButton.Enabled = enabled;
+        _undoButton.Enabled = enabled && _pointUndoStack.Count > 0;
         _themeSettingsButton.Enabled = enabled;
         _saveButton.Enabled = enabled;
         _saveAsButton.Enabled = enabled;
@@ -571,11 +708,10 @@ public sealed partial class MainForm
         _cloudDesktopEnabledCheckBox.Enabled = enabled;
         _calibrateRegionButton.Enabled =
             enabled && _cloudDesktopEnabledCheckBox.Checked;
-        _waitForStableScreenCheckBox.Enabled =
-            enabled && _cloudDesktopEnabledCheckBox.Checked;
+        _waitForStableScreenCheckBox.Enabled = enabled;
         _stabilityTimeoutInput.Enabled =
             enabled
-            && _cloudDesktopEnabledCheckBox.Checked
             && _waitForStableScreenCheckBox.Checked;
+        UpdateSafetyOptionsControls(enabled);
     }
 }

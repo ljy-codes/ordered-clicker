@@ -15,6 +15,12 @@ internal static class Program
             return 0;
         }
 
+        if (args.Length == 3 && args[0] == "--render-workspace")
+        {
+            UiSmokeTests.RenderWorkspace(args[1], args[2]);
+            return 0;
+        }
+
         if (args.Length == 2 && args[0] == "--render-settings")
         {
             UiSmokeTests.RenderSettings(args[1]);
@@ -73,6 +79,7 @@ internal static class Program
                 return Task.CompletedTask;
             }),
             ("ClickExecutionEngine", ClickExecutionEngineTests.RunAsync),
+            ("ExecutionModes", ExecutionModeTests.RunAsync),
             ("ScreenStabilityDetector", ScreenStabilityDetectorTests.RunAsync),
             ("ExecutionReliabilityService", () =>
             {
@@ -124,6 +131,11 @@ internal static class Program
             ("UiSmoke", () =>
             {
                 UiSmokeTests.Run();
+                return Task.CompletedTask;
+            }),
+            ("WindowsExecutionEnvironment", () =>
+            {
+                WindowsExecutionEnvironmentTests.Run();
                 return Task.CompletedTask;
             })
         };

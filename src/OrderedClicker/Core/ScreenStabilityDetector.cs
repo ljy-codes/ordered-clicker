@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using OrderedClicker.Models;
 using OrderedClicker.Services;
 
@@ -38,24 +39,44 @@ public sealed class ScreenStabilityDetector
         ValidateSettings(settings);
         var pausableDelay = new PausableDelay(_delay);
         await pauseGate.WaitIfPausedAsync(cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        var stopwatch = Stopwatch.StartNew();
+        var initialPausedDuration = pauseGate.PausedDuration;
+        double ActiveElapsedMs() =>
+            (stopwatch.Elapsed - (pauseGate.PausedDuration - initialPausedDuration))
+            .TotalMilliseconds;
         var previous = await _sampler.SampleAsync(region, cancellationToken);
-        var elapsedMs = 0;
-        var stableMs = 0;
+        var elapsedMs = ActiveElapsedMs();
+        var stableMs = 0d;
 
         while (elapsedMs < settings.TimeoutMs)
         {
-            await pausableDelay.WaitAsync(
+            var intervalMs = Math.Min(
                 settings.SampleIntervalMs,
+                (int)Math.Ceiling(settings.TimeoutMs - elapsedMs));
+            var intervalStartedMs = ActiveElapsedMs();
+            await pausableDelay.WaitAsync(
+                intervalMs,
                 pauseGate,
                 cancellationToken);
-            elapsedMs += settings.SampleIntervalMs;
 
             await pauseGate.WaitIfPausedAsync(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             var current = await _sampler.SampleAsync(region, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            // Sampling and scheduling consume the timeout too; paused time does not.
+            var intervalElapsedMs = Math.Max(
+                intervalMs, ActiveElapsedMs() - intervalStartedMs);
+            elapsedMs += intervalElapsedMs;
+            if (elapsedMs > settings.TimeoutMs)
+            {
+                return ScreenStabilityResult.TimedOut;
+            }
+
             var difference = CalculateDifference(previous, current);
             if (difference <= settings.DifferenceTolerance)
             {
-                stableMs += settings.SampleIntervalMs;
+                stableMs += intervalElapsedMs;
                 if (stableMs >= settings.StableDurationMs)
                 {
                     return ScreenStabilityResult.Stable;
@@ -67,8 +88,8 @@ public sealed class ScreenStabilityDetector
             }
 
             progress?.Report(new ScreenStabilityProgress(
-                elapsedMs,
-                stableMs,
+                (int)Math.Min(int.MaxValue, elapsedMs),
+                (int)Math.Min(int.MaxValue, stableMs),
                 difference));
             previous = current;
         }

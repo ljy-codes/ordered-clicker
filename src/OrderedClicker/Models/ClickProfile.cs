@@ -33,6 +33,9 @@ public sealed class ClickProfile
 
     public CloudDesktopRegion? CloudDesktopRegion { get; set; }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public TargetWindowBinding? TargetWindow { get; set; }
+
     public ScreenStabilitySettings ScreenStability { get; set; } = new();
 
     public List<ClickPoint> Points { get; set; } = [];

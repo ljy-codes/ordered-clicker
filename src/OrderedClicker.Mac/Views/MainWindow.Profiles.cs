@@ -26,7 +26,7 @@ public sealed partial class MainWindow
         profile.TotalLoops=(int)(_loops.Value??1);profile.LoopDelayMs=(int)(_loopDelay.Value??1000);
         profile.DefaultClickIntervalMs=(int)(_defaultInterval.Value??100);profile.DefaultAfterDelayMs=(int)(_defaultAfter.Value??500);
         profile.CoordinateMode=(CoordinateMode)_mode.SelectedIndex;
-        profile.ScreenStability=new(){Enabled=_stability.IsChecked==true,SampleIntervalMs=(int)(_sample.Value??250),StableDurationMs=(int)(_stableFor.Value??750),TimeoutMs=(int)(_timeout.Value??15000),DifferenceTolerance=(double)(_tolerance.Value??0.02m)};
+        profile.ScreenStability=new(){Enabled=_stability.IsChecked==true,SampleIntervalMs=(int)(_sample.Value??250),StableDurationMs=(int)(_stableFor.Value??750),TimeoutMs=(int)(_timeout.Value??15000),DifferenceTolerance=(double)(_tolerance.Value??0.02m),Region=_profile.ScreenStability.Region};
         profile.Points=_rows.Select(r=>r.Point).ToList();
         return ProfileService.CloneProfile(profile);
     }
@@ -56,7 +56,7 @@ public sealed partial class MainWindow
     {
         _loading=true;
         var points=_rows.Select(r=>r.Point).ToArray(); var selected=_grid.SelectedIndex;
-        _rows.Clear();for(var i=0;i<points.Length;i++)_rows.Add(new(points[i],i+1,Changed));
+        _rows.Clear();for(var i=0;i<points.Length;i++)_rows.Add(CreateRow(points[i],i+1));
         _grid.SelectedIndex=Math.Clamp(selected,-1,_rows.Count-1);_loading=false;
     }
     private void ApplyProfile(ClickProfile profile,string? path,bool baseline)
@@ -68,16 +68,18 @@ public sealed partial class MainWindow
         _stability.IsChecked=profile.ScreenStability.Enabled;_sample.Value=profile.ScreenStability.SampleIntervalMs;
         _stableFor.Value=profile.ScreenStability.StableDurationMs;_timeout.Value=profile.ScreenStability.TimeoutMs;
         _tolerance.Value=(decimal)profile.ScreenStability.DifferenceTolerance;
-        _rows.Clear();for(var i=0;i<profile.Points.Count;i++)_rows.Add(new(profile.Points[i],i+1,Changed));
+        _rows.Clear();for(var i=0;i<profile.Points.Count;i++)_rows.Add(CreateRow(profile.Points[i],i+1));
         _sourcePath=path; _sourceHash=path!=null&&File.Exists(path)?ProfileService.ComputeFileSha256(path):null;
         _sourceTime=path!=null&&File.Exists(path)?File.GetLastWriteTimeUtc(path):null;
         _loading=false;if(baseline)_baseline=SerializeCurrent();
         RefreshRegion();RefreshLocal();Changed();
     }
     private void RefreshLocal()=>_localProfiles.ItemsSource=_profiles.ListLocalProfiles();
+    private PointRow CreateRow(ClickPoint point,int number)=>new(point,number,Changed,
+        ()=>_mode.SelectedIndex==1?_profile.CloudDesktopRegion:null);
     private void SaveDraft()
     {
-        if(_loading||_preview)return;
+        if(_loading||_preview||_activeRunMode==ExecutionRunMode.Rehearsal)return;
         var json=SerializeCurrent();
         if(json==_lastDraft)return;
         if(json==_baseline && _state==ExecutionState.Idle && _recovery==null) { _drafts.Discard();_lastDraft=json;return; }
@@ -90,22 +92,39 @@ public sealed partial class MainWindow
             var draft=_drafts.Load();
             if(draft!=null)
             {
-                var error=ProfileService.ValidateProfile(draft.Profile);
-                if(error!=null)throw new InvalidDataException(error);
+                ValidateRecoveryStructure(draft.Profile);
                 ApplyProfile(draft.Profile,draft.SourcePath,false);
                 _sourceHash=draft.SourceSha256;_sourceTime=draft.SourceUpdatedAtUtc;
                 _status.Text="已恢复上次草稿，请检查后保存。";
                 if(DraftService.HasSourceChanged(draft)){_sourcePath=null;_sourceHash=null;_sourceTime=null;_status.Text="已恢复草稿，来源方案已变化，请另存为。";}
             }
         }
-        catch(Exception e){_drafts.QuarantineBrokenDraft();Error(new InvalidDataException("损坏草稿已隔离："+e.Message));}
+        catch(Exception e) when(e is JsonException or InvalidDataException)
+        { _drafts.QuarantineBrokenDraft(); Error(new InvalidDataException("损坏草稿已隔离："+e.Message)); }
+        catch(Exception e){Error(e);}
         try
         {
             _recovery=_checkpoints.Load();
             _resume.IsEnabled=_recovery!=null;
-            if(_recovery!=null){_runText.Text="发现未完成任务";_progressText.Text=$"已记录 {_recovery.Checkpoint.CompletedClickCount:N0} 次点击，可确认后从断点继续。";}
+            if(_recovery!=null)
+            {
+                if(_recovery.Plan.SourceProfile is {} source)
+                {
+                    ValidateRecoveryStructure(source);
+                    ApplyProfile(ProfileService.CloneProfile(source),null,false);
+                    _status.Text="已恢复执行断点的原始方案，请检查目标页面后继续。";
+                }
+                _runText.Text="发现未完成任务";_progressText.Text=$"已记录 {_recovery.Checkpoint.CompletedClickCount:N0} 次点击，可确认后从断点继续。";
+            }
         }
         catch(Exception e){_checkpoints.QuarantineBrokenCheckpoint();Error(new InvalidDataException("损坏执行断点已隔离："+e.Message));}
+    }
+    private static void ValidateRecoveryStructure(ClickProfile profile)
+    {
+        // A draft may be between calibration or coordinate edits; execution validation belongs to CheckPlan.
+        if(profile.FormatVersion!=4||profile.Points==null||profile.Points.Any(p=>p==null))
+            throw new InvalidDataException("草稿结构或版本无效。");
+        profile.ScreenStability??=new();
     }
     private async Task<bool> ResolveUnsaved()
     {

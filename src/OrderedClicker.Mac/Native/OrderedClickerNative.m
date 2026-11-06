@@ -5,17 +5,42 @@
 #import <CoreVideo/CoreVideo.h>
 #import <stdatomic.h>
 #import <unistd.h>
+#import <pthread.h>
+#import <stdint.h>
+#import <math.h>
 
 // C ABI only: no Objective-C object ownership crosses the managed boundary.
 static atomic_uint pendingEvents;
 static EventHotKeyRef hotkeys[4];
 static EventHandlerRef keyHandler;
 static BOOL initialized;
+typedef struct {
+    uint64_t sequence;
+    int32_t id, x, y, positionValid;
+} OCHotKeyEvent;
+static OCHotKeyEvent keyEvents[256];
+static size_t keyHead, keyCount;
+static uint64_t keySequence;
+static pthread_mutex_t keyLock = PTHREAD_MUTEX_INITIALIZER;
 static OSStatus HandleKey(EventHandlerCallRef next, EventRef event, void *data) {
     EventHotKeyID key;
     if (GetEventParameter(event, kEventParamDirectObject, typeEventHotKeyID, NULL,
-                          sizeof(key), NULL, &key) == noErr && key.id >= 1 && key.id <= 3)
-        atomic_fetch_or(&pendingEvents, 1u << (key.id - 1));
+                          sizeof(key), NULL, &key) == noErr && key.id >= 1 && key.id <= 3) {
+        CGEventRef cursor = CGEventCreate(NULL);
+        CGPoint p = cursor ? CGEventGetLocation(cursor) : CGPointZero;
+        OCHotKeyEvent value = { 0, (int32_t)key.id, (int32_t)llround(p.x),
+            (int32_t)llround(p.y), cursor != NULL };
+        if (cursor) CFRelease(cursor);
+        pthread_mutex_lock(&keyLock);
+        value.sequence = ++keySequence;
+        if (keyCount == 256) {
+            atomic_fetch_or(&pendingEvents, 32u);
+        } else {
+            keyEvents[(keyHead + keyCount) % 256] = value;
+            keyCount++;
+        }
+        pthread_mutex_unlock(&keyLock);
+    }
     return noErr;
 }
 static void DisplayChanged(CGDirectDisplayID display, CGDisplayChangeSummaryFlags flags, void *data) {
@@ -37,6 +62,14 @@ int oc_initialize(void) {
     return status == noErr;
 }
 unsigned int oc_poll_events(void) { return atomic_exchange(&pendingEvents, 0); }
+int oc_dequeue_hotkey(OCHotKeyEvent *value) {
+    if (!value) return 0;
+    pthread_mutex_lock(&keyLock);
+    if (!keyCount) { pthread_mutex_unlock(&keyLock); return 0; }
+    *value = keyEvents[keyHead]; keyHead = (keyHead + 1) % 256; keyCount--;
+    pthread_mutex_unlock(&keyLock);
+    return 1;
+}
 int oc_accessibility(int prompt) {
     NSDictionary *options = @{(__bridge NSString *)kAXTrustedCheckOptionPrompt: @(prompt != 0)};
     return AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)options) ? 1 : 0;
@@ -56,11 +89,99 @@ int oc_move(int x, int y) {
     if (!e) return 0;
     CGEventPost(kCGHIDEventTap, e); CFRelease(e); return 1;
 }
-int oc_click(int releaseOnly) {
+static NSDictionary *TopWindowAtPoint(CGPoint point) {
+    CFArrayRef list = CGWindowListCopyWindowInfo(
+        kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements, kCGNullWindowID);
+    if (!list) return nil;
+    NSArray *windows = CFBridgingRelease(list);
+    for (NSDictionary *window in windows) {
+        CGRect bounds;
+        if (![window[(__bridge NSString *)kCGWindowAlpha] doubleValue]) continue;
+        if (!CGRectMakeWithDictionaryRepresentation(
+            (__bridge CFDictionaryRef)window[(__bridge NSString *)kCGWindowBounds], &bounds)) return nil;
+        if (CGRectContainsPoint(bounds, point)) return window;
+    }
+    return nil;
+}
+int oc_own_ui_at(int x, int y) {
+    @autoreleasepool {
+        NSRunningApplication *front = NSWorkspace.sharedWorkspace.frontmostApplication;
+        NSDictionary *window = TopWindowAtPoint(CGPointMake(x,y));
+        NSNumber *owner = window[(__bridge NSString *)kCGWindowOwnerPID];
+        if (!front || !owner) return -1;
+        return front.processIdentifier == getpid() || owner.intValue == getpid() ? 1 : 0;
+    }
+}
+static BOOL CopyUTF8(NSString *value, char *output, int capacity) {
+    if (!value.length || !output || capacity <= 0) return NO;
+    NSData *data = [value dataUsingEncoding:NSUTF8StringEncoding];
+    if (!data || data.length >= (NSUInteger)capacity) return NO;
+    memcpy(output, data.bytes, data.length); output[data.length] = 0; return YES;
+}
+int oc_probe_window(int x, int y, char *application, int applicationCapacity,
+    char *title, int titleCapacity, int *foregroundPid, int *windowPid, int *ownProcess) {
+    @autoreleasepool {
+        if (!oc_accessibility(0)) return 0;
+        NSRunningApplication *front = NSWorkspace.sharedWorkspace.frontmostApplication;
+        NSDictionary *hit = TopWindowAtPoint(CGPointMake(x,y));
+        NSNumber *owner = hit[(__bridge NSString *)kCGWindowOwnerPID];
+        if (!front || !owner || owner.intValue <= 0) return 0;
+        *foregroundPid = front.processIdentifier; *windowPid = owner.intValue;
+        *ownProcess = front.processIdentifier == getpid() || owner.intValue == getpid();
+        NSRunningApplication *app = [NSRunningApplication runningApplicationWithProcessIdentifier:owner.intValue];
+        if (!app.bundleIdentifier.length) return 0;
+
+        AXUIElementRef system = AXUIElementCreateSystemWide(), element = NULL;
+        if (!system) return 0;
+        AXUIElementSetMessagingTimeout(system, 0.3);
+        AXError status = AXUIElementCopyElementAtPosition(system, x, y, &element);
+        CFRelease(system);
+        if (status != kAXErrorSuccess || !element) return 0;
+        pid_t actualPid = 0;
+        if (AXUIElementGetPid(element, &actualPid) != kAXErrorSuccess || actualPid != owner.intValue) {
+            CFRelease(element); return 0;
+        }
+        CFTypeRef window = NULL;
+        CFTypeRef role = NULL;
+        AXUIElementCopyAttributeValue(element, kAXRoleAttribute, &role);
+        if (role && CFEqual(role, kAXWindowRole)) window = CFRetain(element);
+        else AXUIElementCopyAttributeValue(element, kAXWindowAttribute, &window);
+        if (role) CFRelease(role);
+        CFRelease(element);
+        if (!window || CFGetTypeID(window) != AXUIElementGetTypeID()) {
+            if (window) CFRelease(window); return 0;
+        }
+        CFTypeRef position = NULL, size = NULL, name = NULL;
+        AXUIElementCopyAttributeValue((AXUIElementRef)window, kAXPositionAttribute, &position);
+        AXUIElementCopyAttributeValue((AXUIElementRef)window, kAXSizeAttribute, &size);
+        AXUIElementCopyAttributeValue((AXUIElementRef)window, kAXTitleAttribute, &name);
+        CGPoint origin; CGSize dimensions; CGRect cgBounds;
+        BOOL valid = position && size && name &&
+            CFGetTypeID(position) == AXValueGetTypeID() &&
+            CFGetTypeID(size) == AXValueGetTypeID() &&
+            CFGetTypeID(name) == CFStringGetTypeID() &&
+            AXValueGetValue((AXValueRef)position, kAXValueCGPointType, &origin) &&
+            AXValueGetValue((AXValueRef)size, kAXValueCGSizeType, &dimensions) &&
+            CGRectMakeWithDictionaryRepresentation(
+                (__bridge CFDictionaryRef)hit[(__bridge NSString *)kCGWindowBounds], &cgBounds);
+        // AX describes the actual hit element's window; CG confirms that window is on top.
+        if (valid) valid = fabs(origin.x-cgBounds.origin.x) <= 4 && fabs(origin.y-cgBounds.origin.y) <= 4 &&
+            fabs(dimensions.width-cgBounds.size.width) <= 4 && fabs(dimensions.height-cgBounds.size.height) <= 4;
+        NSString *cgTitle = hit[(__bridge NSString *)kCGWindowName];
+        if (valid && cgTitle.length) valid = [cgTitle isEqualToString:(__bridge NSString *)name];
+        if (valid) valid = CopyUTF8(app.bundleIdentifier,application,applicationCapacity) &&
+            CopyUTF8((__bridge NSString *)name,title,titleCapacity);
+        if (position) CFRelease(position);
+        if (size) CFRelease(size);
+        if (name) CFRelease(name);
+        CFRelease(window);
+        return valid ? 1 : 0;
+    }
+}
+int oc_click_at(int x, int y, int releaseOnly) {
     if (!oc_accessibility(0) || !CGPreflightPostEventAccess()) return 0;
-    CGEventRef cursor = CGEventCreate(NULL);
-    if (!cursor) return 0;
-    CGPoint p = CGEventGetLocation(cursor); CFRelease(cursor);
+    if (!releaseOnly && oc_own_ui_at(x,y) != 0) return 0;
+    CGPoint p = CGPointMake(x,y);
     CGEventRef up = CGEventCreateMouseEvent(NULL, kCGEventLeftMouseUp, p, kCGMouseButtonLeft);
     if (!up) return 0;
     if (!releaseOnly) {

@@ -39,6 +39,9 @@ jobs:
       PYTHONUTF8: "1"
     permissions:
       contents: write
+    concurrency:
+      group: release-${{ github.ref_name }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -119,40 +122,80 @@ jobs:
           $hashLines | Set-Content `
             -LiteralPath (Join-Path $releaseDirectory "SHA256SUMS.txt") `
             -Encoding utf8NoBOM
-      - name: Clear existing release assets
+      - name: Prepare GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+      - name: Replace release assets
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_DIRECTORY: ${{ runner.temp }}\ordered-clicker-release
         run: |
+          $ErrorActionPreference = "Stop"
+          $files = @(Get-ChildItem -LiteralPath $env:RELEASE_DIRECTORY -File | Sort-Object Name)
+          if ($files.Count -eq 0) {
+            throw "No staged release assets to upload."
+          }
           $headers = @{
             Authorization = "Bearer $env:GH_TOKEN"
             Accept = "application/vnd.github+json"
             "X-GitHub-Api-Version" = "2022-11-28"
             "User-Agent" = "ordered-clicker-release"
           }
-          $releaseUrl = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/tags/$env:GITHUB_REF_NAME"
-          $release = Invoke-RestMethod `
-            -Method Get `
-            -Uri $releaseUrl `
-            -Headers $headers `
-            -SkipHttpErrorCheck `
-            -StatusCodeVariable statusCode
+          $apiRoot = "https://api.github.com/repos/$env:GITHUB_REPOSITORY"
+          $tag = [uri]::EscapeDataString($env:GITHUB_REF_NAME)
+          $release = Invoke-RestMethod -Method Get -Uri "$apiRoot/releases/tags/$tag" -Headers $headers
+          $uploadUrl = $release.upload_url -replace '\{.*$', ''
+          if (-not $release.id -or -not $uploadUrl) {
+            throw "Release API returned no release ID or upload URL."
+          }
+          $existing = @(
+            $page = 1
+            do {
+              $batch = @(Invoke-RestMethod -Method Get `
+                -Uri "$apiRoot/releases/$($release.id)/assets?per_page=100&page=$page" -Headers $headers)
+              $batch
+              $page++
+            } while ($batch.Count -eq 100)
+          )
+          $uploaded = [System.Collections.Generic.List[object]]::new()
+          $uploadId = [guid]::NewGuid().ToString("N")
+          try {
+            foreach ($file in $files) {
+              $temporaryName = "$($file.Name).upload-$uploadId"
+              $encodedName = [uri]::EscapeDataString($temporaryName)
+              $asset = Invoke-RestMethod -Method Post -Uri "${uploadUrl}?name=$encodedName" `
+                -Headers $headers -ContentType "application/octet-stream" -InFile $file.FullName
+              if (-not $asset.id) {
+                throw "Upload returned no asset ID: $($file.Name)"
+              }
+              $uploaded.Add([pscustomobject]@{ Id = $asset.id; Name = $file.Name })
+            }
+          }
+          catch {
+            $uploadFailure = $_
+            foreach ($asset in $uploaded) {
+              try {
+                Invoke-RestMethod -Method Delete -Uri "$apiRoot/releases/assets/$($asset.Id)" `
+                  -Headers $headers | Out-Null
+              }
+              catch {
+                Write-Warning "Unable to remove temporary asset $($asset.Id): $_"
+              }
+            }
+            throw $uploadFailure
+          }
 
-          if ($statusCode -eq 404) {
-            return
+          # Do not touch the old release until every new file has uploaded successfully.
+          foreach ($asset in $uploaded) {
+            foreach ($oldAsset in $existing) {
+              if ([string]::Equals($oldAsset.name, $asset.Name, [StringComparison]::Ordinal)) {
+                Invoke-RestMethod -Method Delete -Uri "$apiRoot/releases/assets/$($oldAsset.id)" `
+                  -Headers $headers | Out-Null
+              }
+            }
+            $body = @{ name = $asset.Name } | ConvertTo-Json -Compress
+            Invoke-RestMethod -Method Patch -Uri "$apiRoot/releases/assets/$($asset.Id)" `
+              -Headers $headers -ContentType "application/json" -Body $body | Out-Null
           }
-          if ($statusCode -ne 200) {
-            throw "Unable to query existing release assets. HTTP status: $statusCode"
-          }
-
-          foreach ($asset in $release.assets) {
-            $assetUrl = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/assets/$($asset.id)"
-            Invoke-RestMethod -Method Delete -Uri $assetUrl -Headers $headers | Out-Null
-          }
-      - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-          fail_on_unmatched_files: true
-          files: |
-            ${{ runner.temp }}/ordered-clicker-release/*

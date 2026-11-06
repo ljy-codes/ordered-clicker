@@ -39,9 +39,11 @@ public sealed class LogRetentionService
             .OrderBy(file => file.LastWriteTimeUtc)
             .ToList();
         var cutoff = now.UtcDateTime - policy.MaximumAge;
+        var attempted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var file in files.Where(file => file.LastWriteTimeUtc < cutoff).ToArray())
         {
+            attempted.Add(file.FullName);
             if (TryDelete(file))
             {
                 files.Remove(file);
@@ -50,13 +52,23 @@ public sealed class LogRetentionService
         }
 
         var totalBytes = files.Sum(file => file.Exists ? file.Length : 0L);
-        while (files.Count > policy.MaximumFiles || totalBytes > policy.MaximumBytes)
+        var remainingFiles = files.Count;
+        foreach (var oldest in files)
         {
-            var oldest = files[0];
+            if (remainingFiles <= policy.MaximumFiles && totalBytes <= policy.MaximumBytes)
+            {
+                break;
+            }
+
+            if (!attempted.Add(oldest.FullName))
+            {
+                continue;
+            }
+
             var length = oldest.Exists ? oldest.Length : 0L;
-            files.RemoveAt(0);
             if (TryDelete(oldest))
             {
+                remainingFiles--;
                 totalBytes -= length;
                 removed++;
             }

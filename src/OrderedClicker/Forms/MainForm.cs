@@ -172,8 +172,10 @@ public sealed partial class MainForm : Form
     protected override void OnShown(EventArgs e)
     {
         base.OnShown(e);
-        RecoverDraftIfAvailable();
-        RecoverExecutionCheckpointIfAvailable();
+        if (!RecoverExecutionCheckpointIfAvailable())
+        {
+            RecoverDraftIfAvailable();
+        }
         if (!string.IsNullOrWhiteSpace(_settingsLoadWarning))
         {
             MessageBox.Show(
@@ -200,11 +202,29 @@ public sealed partial class MainForm : Form
     protected override void OnHandleCreated(EventArgs e)
     {
         base.OnHandleCreated(e);
+        NativeMethods.WTSRegisterSessionNotification(Handle, 0);
         ApplyDarkTitleBar();
+    }
+
+    protected override void OnHandleDestroyed(EventArgs e)
+    {
+        NativeMethods.WTSUnRegisterSessionNotification(Handle);
+        base.OnHandleDestroyed(e);
     }
 
     protected override void WndProc(ref Message message)
     {
+        if (message.Msg is NativeMethods.WmDisplayChange or NativeMethods.WmDpiChanged
+            || (message.Msg == NativeMethods.WmSessionChange
+                && message.WParam.ToInt32() is 2 or 3 or 4 or 7))
+        {
+            Interlocked.Exchange(ref _executionEnvironmentChanged, 1);
+            if (_executionState != ExecutionState.Idle)
+            {
+                StopExecution();
+                SetStatus("显示或会话环境已变化，正在停止并保留执行断点。");
+            }
+        }
         if (message.Msg == NativeMethods.WmHotKey)
         {
             if (_suspendHotKeyActions)
@@ -250,6 +270,7 @@ public sealed partial class MainForm : Form
         _executionProgressTimer.Stop();
         _executionProgressTimer.Dispose();
         CancelDelayedCapture();
+        _windowBindingCancellation?.Cancel();
         _executionCancellation?.Cancel();
         _pauseGate.Resume();
         _hotKeyCoordinator?.Dispose();
@@ -401,7 +422,6 @@ public sealed partial class MainForm : Form
         var page = CreateWorkspacePage("ModePage");
         var content = BuildCloudDesktopPanel();
         content.Dock = DockStyle.Top;
-        content.Height = 96;
         page.Controls.Add(content);
         return page;
     }
@@ -494,11 +514,11 @@ public sealed partial class MainForm : Form
             Padding = new Padding(8)
         };
         var panel = BuildExecutionPanel();
-        panel.Width = 700;
-        panel.Height = 110;
+        panel.Width = 550;
+        panel.Height = 160;
         var supportActions = new FlowLayoutPanel
         {
-            Width = 700,
+            Width = 550,
             Height = 48,
             FlowDirection = FlowDirection.LeftToRight,
             WrapContents = false
@@ -818,6 +838,9 @@ public sealed partial class MainForm : Form
         panel.Controls.Add(_startPauseButton);
         panel.Controls.Add(_stopButton);
         panel.Controls.Add(_restartButton);
+        ConfigureExecutionTools(panel);
+        panel.SetFlowBreak(_stopButton, true);
+        panel.SetFlowBreak(_stepButton, true);
         panel.Controls.Add(_executionHintLabel);
         return panel;
     }
@@ -1162,7 +1185,6 @@ public sealed partial class MainForm : Form
             _importedProfileSourcePath = sourceChanged ? draft.SourcePath : null;
             _baselineProfile = null;
             _lastDraftSnapshot = ProfileService.CloneProfile(draft.Profile);
-            ClearExecutionCheckpoint();
             SetStatus(
                 sourceChanged
                     ? "已恢复自动草稿；原方案已变化，请另存为新方案。"
@@ -1271,6 +1293,7 @@ public sealed partial class MainForm : Form
         ApplyNeutralButtonTheme(_stopButton);
         ApplyNeutralButtonTheme(_restartButton);
         ApplyNeutralButtonTheme(_calibrateRegionButton);
+        ApplyExecutionToolsTheme();
 
         ApplyAccentButtonTheme(_saveButton, theme.Primary);
         ApplyAccentButtonTheme(_saveAsButton, theme.SettingsAccent);
@@ -1352,10 +1375,13 @@ public sealed partial class MainForm : Form
 
         CancelDelayedCapture();
         if (_captureMode is CaptureMode.CloudRegionTopLeft
-            or CaptureMode.CloudRegionBottomRight)
+            or CaptureMode.CloudRegionBottomRight
+            or CaptureMode.StabilityRegionTopLeft
+            or CaptureMode.StabilityRegionBottomRight)
         {
             _captureMode = CaptureMode.Idle;
             _cloudRegionTopLeft = null;
+            _stabilityRegionTopLeft = null;
             CloseCaptureHud();
         }
         else if (_captureMode == CaptureMode.PointCapture)
@@ -1388,6 +1414,13 @@ public sealed partial class MainForm : Form
 
         try
         {
+            if (_captureMode is CaptureMode.StabilityRegionTopLeft
+                or CaptureMode.StabilityRegionBottomRight)
+            {
+                CaptureStabilityRegionCorner();
+                return;
+            }
+
             if (_captureMode is CaptureMode.CloudRegionTopLeft
                 or CaptureMode.CloudRegionBottomRight)
             {
@@ -1624,6 +1657,10 @@ public sealed partial class MainForm : Form
     {
         CommitGridChanges();
         var value = decimal.ToInt32(_defaultClickIntervalInput.Value);
+        if (_points.Count > 0)
+        {
+            PushPointUndo();
+        }
         PointTimingService.ApplyClickInterval(_points, value);
         _pointGrid.Refresh();
         MarkDraftDirty();
@@ -1637,6 +1674,10 @@ public sealed partial class MainForm : Form
     {
         CommitGridChanges();
         var value = decimal.ToInt32(_defaultAfterDelayInput.Value);
+        if (_points.Count > 0)
+        {
+            PushPointUndo();
+        }
         PointTimingService.ApplyAfterDelay(_points, value);
         _pointGrid.Refresh();
         MarkDraftDirty();
@@ -1859,10 +1900,9 @@ public sealed partial class MainForm : Form
             return;
         }
 
-        ApplyLocalProfile(result.Profile!, dialog.FileName);
+        ApplyLocalProfile(result.Profile!, dialog.FileName, result.SourceSha256);
         _lastDraftSnapshot = ProfileService.CloneProfile(result.Profile!);
         _draftService?.Discard();
-        ClearExecutionCheckpoint();
         SetStatus($"已打开方案：{dialog.FileName}");
     }
 
@@ -1929,11 +1969,20 @@ public sealed partial class MainForm : Form
                 ? CoordinateMode.CloudDesktopRegion
                 : CoordinateMode.AbsoluteScreen,
             CloudDesktopRegion = _cloudDesktopRegion,
+            TargetWindow = _targetWindow is null ? null : new TargetWindowBinding
+            {
+                Platform = _targetWindow.Platform,
+                ApplicationId = _targetWindow.ApplicationId,
+                WindowTitle = _targetWindow.WindowTitle
+            },
             ScreenStability = new ScreenStabilitySettings
             {
-                Enabled = _cloudDesktopEnabledCheckBox.Checked
-                    && _waitForStableScreenCheckBox.Checked,
-                TimeoutMs = decimal.ToInt32(_stabilityTimeoutInput.Value) * 1000
+                Enabled = _waitForStableScreenCheckBox.Checked,
+                TimeoutMs = decimal.ToInt32(_stabilityTimeoutInput.Value * 1000),
+                Region = _stabilityRegion,
+                SampleIntervalMs = _stabilitySettings.SampleIntervalMs,
+                StableDurationMs = _stabilitySettings.StableDurationMs,
+                DifferenceTolerance = _stabilitySettings.DifferenceTolerance
             },
             Points = _points.Select(ClonePoint).ToList()
         };
@@ -1941,6 +1990,12 @@ public sealed partial class MainForm : Form
 
     private void ApplyProfile(ClickProfile profile)
     {
+        CancelDelayedCapture();
+        _windowBindingCancellation?.Cancel();
+        _captureMode = CaptureMode.Idle;
+        CloseCaptureHud();
+        _pointUndoStack.Clear();
+        _undoButton.Enabled = false;
         TrackProfileIdentity(profile);
         _profileSelector.Text = profile.Name;
         _totalLoopsInput.Value = Math.Clamp(profile.TotalLoops, 1, 100000);
@@ -1958,6 +2013,8 @@ public sealed partial class MainForm : Form
         SubscribePointChanges();
         _pointBindingSource.DataSource = _points;
         ApplyCloudDesktopProfile(profile);
+        ApplyExecutionToolsProfile(profile);
+        UpdateCaptureButton();
         _pointGrid.Refresh();
         UpdateCaptureEmptyState();
         _draftDirty = false;
@@ -2023,6 +2080,8 @@ public sealed partial class MainForm : Form
                 CaptureMode.PointCapture => "● 结束采点",
                 CaptureMode.CloudRegionTopLeft => $"记录左上角 ({CaptureHotKeyText})",
                 CaptureMode.CloudRegionBottomRight => $"记录右下角 ({CaptureHotKeyText})",
+                CaptureMode.StabilityRegionTopLeft => $"记录左上角 ({CaptureHotKeyText})",
+                CaptureMode.StabilityRegionBottomRight => $"记录右下角 ({CaptureHotKeyText})",
                 _ => $"＋ 采点 ({CaptureHotKeyText})"
             };
         var active = _captureMode != CaptureMode.Idle;
@@ -2225,7 +2284,30 @@ public sealed partial class MainForm : Form
         button.FlatStyle = FlatStyle.Flat;
         button.UseVisualStyleBackColor = false;
         button.Cursor = Cursors.Hand;
+        button.Paint += PaintDisabledCommandButton;
         ApplyNeutralButtonTheme(button);
+    }
+
+    private void PaintDisabledCommandButton(object? sender, PaintEventArgs e)
+    {
+        if (sender is not Button { Enabled: false } button)
+        {
+            return;
+        }
+
+        using var background = new SolidBrush(_theme.Surface);
+        using var border = new Pen(_theme.Border);
+        e.Graphics.FillRectangle(background, button.ClientRectangle);
+        e.Graphics.DrawRectangle(border, 0, 0, button.Width - 1, button.Height - 1);
+        var alignment = button.TextAlign is ContentAlignment.MiddleLeft
+            ? TextFormatFlags.Left
+            : button.TextAlign is ContentAlignment.MiddleRight
+                ? TextFormatFlags.Right
+                : TextFormatFlags.HorizontalCenter;
+        TextRenderer.DrawText(e.Graphics, button.Text, button.Font,
+            button.ClientRectangle, _theme.MutedText,
+            alignment | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine
+            | TextFormatFlags.PreserveGraphicsClipping);
     }
 
     private void ConfigurePrimaryButton(Button button, int width)

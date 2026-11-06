@@ -8,9 +8,48 @@ internal static class ExecutionPlanSafetyTests
     public static void Run()
     {
         FingerprintChangesOnlyForExecutionData();
+        OptionalSafetyFieldsPreserveLegacyFingerprintUntilConfigured();
         EstimatesBaseAndMaximumDuration();
         SafetyCornerRequiresContinuousDwell();
         SafetyCornerContainsOnlyConfiguredCorner();
+    }
+
+    private static void OptionalSafetyFieldsPreserveLegacyFingerprintUntilConfigured()
+    {
+        var profile = CreateProfile();
+        const string legacyFingerprint =
+            "E8FA7FA8816C008192B0C2DC7669BF75C0E59707C91CA636F1920CC18C74D58A";
+        TestAssert.Equal(legacyFingerprint, ExecutionPlanFingerprintService.Create(profile),
+            "未配置新增可选字段时必须保留既有 v4 指纹");
+        profile.TargetWindow = new TargetWindowBinding
+        {
+            Platform = "windows", ApplicationId = "app", WindowTitle = "title"
+        };
+        var bound = ExecutionPlanFingerprintService.Create(profile);
+        TestAssert.True(bound != legacyFingerprint, "窗口绑定必须纳入执行指纹");
+        foreach (var change in new Action<TargetWindowBinding>[]
+                 {
+                     binding => binding.Platform = "macos",
+                     binding => binding.ApplicationId = "other",
+                     binding => binding.WindowTitle = "other"
+                 })
+        {
+            change(profile.TargetWindow);
+            var changed = ExecutionPlanFingerprintService.Create(profile);
+            TestAssert.True(changed != bound, "每个绑定字段变化都应使旧计划失效");
+            bound = changed;
+        }
+
+        profile.TargetWindow = null;
+        profile.ScreenStability.Region = new ScreenBounds(1, 2, 3, 4);
+        var region = ExecutionPlanFingerprintService.Create(profile);
+        TestAssert.True(region != legacyFingerprint, "自定义区域必须纳入指纹");
+        profile.ScreenStability.Region = new ScreenBounds(1, 2, 4, 4);
+        TestAssert.True(region != ExecutionPlanFingerprintService.Create(profile),
+            "区域尺寸变化必须使旧计划失效");
+        profile.ScreenStability.Region = null;
+        TestAssert.Equal(legacyFingerprint, ExecutionPlanFingerprintService.Create(profile),
+            "清除新增可选字段后应恢复原指纹");
     }
 
     private static void SafetyCornerRequiresContinuousDwell()

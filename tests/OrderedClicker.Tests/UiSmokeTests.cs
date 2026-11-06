@@ -1,8 +1,10 @@
 using OrderedClicker.Forms;
+using OrderedClicker.Core;
 using OrderedClicker.Models;
 using OrderedClicker.Services;
 using OrderedClicker.Theming;
 using System.Reflection;
+using System.Text.Json;
 
 namespace OrderedClicker.Tests;
 
@@ -30,6 +32,12 @@ internal static class UiSmokeTests
         AssertGlobalTimingApplication(form);
         AssertDefaultHotKeyText(form);
         AssertPointUndoHistoryBounded(form);
+        AssertPointUndoDoesNotCrossProfiles(form);
+        AssertRecoveryRestoresProfileAndKeepsMatchingCheckpoint(form);
+        AssertBrokenDraftDoesNotInvalidateLegacyCheckpoint();
+        AssertExecutionTools(form);
+        AssertResumeCountdownCanBeStopped(form);
+        AssertDisplayChangeStopsExecution(form);
         AssertUnchangedHotKeysAreDetected();
         AssertThemeSettingsDialog(form);
         AssertConfiguredThemeLoads();
@@ -67,6 +75,202 @@ internal static class UiSmokeTests
         TestAssert.True(
             controls.Any(control => control.Name == "CaptureEmptyStateLabel"),
             "采点页应包含空状态");
+    }
+
+    private static void AssertPointUndoDoesNotCrossProfiles(MainForm form)
+    {
+        var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        var apply = typeof(MainForm).GetMethod("ApplyProfile", flags)!;
+        var push = typeof(MainForm).GetMethod("PushPointUndo", flags)!;
+        var undo = typeof(MainForm).GetMethod("UndoPointChange", flags)!;
+        var snapshot = typeof(MainForm).GetMethod("CreateProfileSnapshot", flags)!;
+        apply.Invoke(form, [new ClickProfile
+        {
+            Name = "方案 A",
+            Points = [new ClickPoint { X = 100, Y = 100 }]
+        }]);
+        push.Invoke(form, null);
+        apply.Invoke(form, [new ClickProfile
+        {
+            Name = "方案 B",
+            Points = [new ClickPoint { X = 200, Y = 200 }]
+        }]);
+        undo.Invoke(form, null);
+        var current = (ClickProfile)snapshot.Invoke(form, null)!;
+        TestAssert.Equal("方案 B", current.Name, "切换方案后名称应保持");
+        TestAssert.Equal(200, current.Points.Single().X,
+            "切换方案后的撤销不能把上一方案的点位放入当前方案");
+    }
+
+    private static void AssertRecoveryRestoresProfileAndKeepsMatchingCheckpoint(MainForm form)
+    {
+        var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        var bounds = new MonitorService().GetVirtualScreenBounds();
+        var profile = new ClickProfile
+        {
+            Name = "恢复测试方案",
+            CoordinateMode = CoordinateMode.CloudDesktopRegion,
+            CloudDesktopRegion = new CloudDesktopRegion
+            {
+                X = bounds.X, Y = bounds.Y, Width = 300, Height = 300
+            },
+            TargetWindow = new TargetWindowBinding
+            {
+                Platform = "Windows", ApplicationId = @"C:\test\target.exe",
+                WindowTitle = "目标窗口"
+            },
+            ScreenStability = new ScreenStabilitySettings
+            {
+                Enabled = true,
+                TimeoutMs = 10250,
+                SampleIntervalMs = 200,
+                StableDurationMs = 1000,
+                DifferenceTolerance = 0.01,
+                Region = new ScreenBounds(bounds.X + 20, bounds.Y + 20, 100, 100)
+            },
+            Points =
+            [
+                new ClickPoint
+                {
+                    X = bounds.X + 100, Y = bounds.Y + 100,
+                    RelativeX = 0.3, RelativeY = 0.3, ClickCount = 3
+                }
+            ]
+        };
+        var plan = ExecutionPlanService.Create(profile, bounds);
+        var checkpoint = new ExecutionCheckpoint(0, 0, 1,
+            ExecutionStage.ClickInterval, 0, 1);
+        var envelope = new ExecutionCheckpointEnvelope(
+            1, "2.2.0", plan, plan.ProfileFingerprint, checkpoint, DateTimeOffset.UtcNow);
+        typeof(MainForm).GetMethod("ApplyRecoveredExecutionCheckpoint", flags)!
+            .Invoke(form, [envelope]);
+        var restored = (ClickProfile)typeof(MainForm)
+            .GetMethod("CreateProfileSnapshot", flags)!.Invoke(form, null)!;
+        TestAssert.Equal(plan.ProfileFingerprint,
+            ExecutionPlanFingerprintService.Create(restored),
+            "跨进程恢复必须同时恢复方案、相对坐标、窗口、区域和稳定检测参数");
+        typeof(MainForm).GetMethod("ApplyLocalProfile", flags, null,
+                [typeof(ClickProfile), typeof(string)], null)!
+            .Invoke(form, [profile, @"C:\profiles\恢复测试.oclick"]);
+        TestAssert.True(ReferenceEquals(plan, typeof(MainForm)
+            .GetField("_pendingExecutionPlan", flags)!.GetValue(form)),
+            "重新打开匹配的原方案不能清除恢复断点");
+        TestAssert.Equal(checkpoint, (ExecutionCheckpoint)typeof(MainForm)
+            .GetField("_executionCheckpoint", flags)!.GetValue(form)!,
+            "匹配方案应保留已完成点击数量和阶段");
+        typeof(MainForm).GetMethod("ClearExecutionCheckpoint", flags)!.Invoke(form, null);
+    }
+
+    private static void AssertExecutionTools(MainForm form)
+    {
+        var names = EnumerateControls(form).Select(control => control.Name).ToHashSet();
+        foreach (var name in new[]
+        {
+            "RehearsalButton", "StepExecutionButton", "BindTargetWindowButton",
+            "ClearTargetWindowButton", "CaptureStabilityRegionButton",
+            "PreviewStabilityRegionButton", "ClearStabilityRegionButton"
+        })
+        {
+            TestAssert.True(names.Contains(name), $"缺少执行工具 {name}");
+        }
+        var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        var apply = typeof(MainForm).GetMethod("ApplyProfile", flags)!;
+        apply.Invoke(form, [new ClickProfile()]);
+        var stable = EnumerateControls(form).OfType<CheckBox>()
+            .Single(control => control.Name == "WaitForStableScreenCheckBox");
+        TestAssert.True(stable.Enabled, "本机模式也应允许稳定检测");
+        stable.Checked = true;
+        var profile = (ClickProfile)typeof(MainForm)
+            .GetMethod("CreateProfileSnapshot", flags)!.Invoke(form, null)!;
+        TestAssert.True(profile.ScreenStability.Enabled,
+            "本机模式必须保存稳定检测开关");
+        typeof(MainForm).GetMethod("SetConfigurationEnabled", flags)!.Invoke(form, [false]);
+        TestAssert.True(!EnumerateControls(form).Single(control =>
+            control.Name == "BindTargetWindowButton").Enabled,
+            "执行中不能更换目标窗口");
+        typeof(MainForm).GetMethod("SetConfigurationEnabled", flags)!.Invoke(form, [true]);
+    }
+
+    private static void AssertBrokenDraftDoesNotInvalidateLegacyCheckpoint()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"oc-checkpoint-draft-{Guid.NewGuid():N}");
+        try
+        {
+            var paths = AppDataPaths.Create(root, false);
+            var draft = new DraftService(paths);
+            File.WriteAllText(draft.DraftPath, "{broken-json");
+            using var recovered = new MainForm(enableGlobalHotKeys: false, appDataPaths: paths);
+            var profile = new ClickProfile
+            {
+                Points = [new ClickPoint { X = 100, Y = 100 }]
+            };
+            var legacyPlan = JsonSerializer.SerializeToNode(ExecutionPlanService.Create(profile,
+                new MonitorService().GetVirtualScreenBounds()))!;
+            legacyPlan["SourceProfile"] = null;
+            var plan = legacyPlan.Deserialize<ExecutionPlan>()!;
+            var envelope = new ExecutionCheckpointEnvelope(1, "2.1.0", plan,
+                plan.ProfileFingerprint, ExecutionCheckpoint.Start, DateTimeOffset.UtcNow);
+            var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            typeof(MainForm).GetMethod("ApplyRecoveredExecutionCheckpoint", flags)!
+                .Invoke(recovered, [envelope]);
+            TestAssert.True(ReferenceEquals(plan, typeof(MainForm)
+                .GetField("_pendingExecutionPlan", flags)!.GetValue(recovered)),
+                "坏草稿不能阻止有效旧断点恢复和打开原方案继续");
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    private static void AssertResumeCountdownCanBeStopped(MainForm form)
+    {
+        var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        using var cancellation = new CancellationTokenSource();
+        var cancellationField = typeof(MainForm).GetField("_executionCancellation", flags)!;
+        cancellationField.SetValue(form, cancellation);
+        var gate = (AsyncPauseGate)typeof(MainForm).GetField("_pauseGate", flags)!.GetValue(form)!;
+        gate.Pause();
+        var state = typeof(MainForm).GetMethod("SetExecutionState", flags)!;
+        state.Invoke(form, [ExecutionState.Paused]);
+        var resume = (Task)typeof(MainForm).GetMethod("ResumeExecutionAsync", flags)!
+            .Invoke(form, null)!;
+        TestAssert.True(gate.IsPaused, "恢复倒计时结束前必须保持暂停");
+        TestAssert.Equal(ExecutionState.Countdown,
+            (ExecutionState)typeof(MainForm).GetField("_executionState", flags)!.GetValue(form)!,
+            "恢复操作应先进入倒计时");
+        typeof(MainForm).GetMethod("StopExecution", flags)!.Invoke(form, null);
+        var deadline = DateTime.UtcNow.AddSeconds(2);
+        while (!resume.IsCompleted && DateTime.UtcNow < deadline)
+        {
+            Application.DoEvents();
+            Thread.Sleep(10);
+        }
+        TestAssert.True(resume.IsCompleted, "停止应立即取消恢复倒计时");
+        resume.GetAwaiter().GetResult();
+        TestAssert.True(cancellation.IsCancellationRequested, "停止应取消执行令牌");
+        cancellationField.SetValue(form, null);
+        state.Invoke(form, [ExecutionState.Idle]);
+    }
+
+    private static void AssertDisplayChangeStopsExecution(MainForm form)
+    {
+        var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        var cancellationField = typeof(MainForm).GetField("_executionCancellation", flags)!;
+        foreach (var (messageId, sessionEvent) in new[] { (0x007E, 0), (0x02B1, 4) })
+        {
+            using var cancellation = new CancellationTokenSource();
+            cancellationField.SetValue(form, cancellation);
+            typeof(MainForm).GetMethod("SetExecutionState", flags)!
+                .Invoke(form, [ExecutionState.Running]);
+            var message = Message.Create(form.Handle, messageId, new IntPtr(sessionEvent), IntPtr.Zero);
+            typeof(MainForm).GetMethod("WndProc", flags)!.Invoke(form, [message]);
+            TestAssert.True(cancellation.IsCancellationRequested,
+                "运行中显示环境变化或远程会话断开必须停止输入");
+            cancellationField.SetValue(form, null);
+            typeof(MainForm).GetMethod("SetExecutionState", flags)!
+                .Invoke(form, [ExecutionState.Idle]);
+        }
     }
 
     private static void AssertRunSupportControls(MainForm form)
@@ -253,7 +457,8 @@ internal static class UiSmokeTests
     {
         var applyLocalProfile = typeof(MainForm).GetMethod(
             "ApplyLocalProfile",
-            BindingFlags.Instance | BindingFlags.NonPublic);
+            BindingFlags.Instance | BindingFlags.NonPublic,
+            binder: null, types: [typeof(ClickProfile), typeof(string)], modifiers: null);
         var requiresSaveAsField = typeof(MainForm).GetField(
             "_saveImportedProfileAsCopy",
             BindingFlags.Instance | BindingFlags.NonPublic);
@@ -302,6 +507,22 @@ internal static class UiSmokeTests
         Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
         bitmap.Save(fullPath, System.Drawing.Imaging.ImageFormat.Png);
         Console.WriteLine($"UI rendered: {fullPath}");
+    }
+
+    public static void RenderWorkspace(string pageName, string outputPath)
+    {
+        using var form = CreateLaidOutForm();
+        var pages = EnumerateControls(form).OfType<TabControl>().Single();
+        pages.SelectedTab = pages.TabPages.Cast<TabPage>().Single(page => page.Name == pageName);
+        PerformLayout(form);
+        AssertControlsStayInsideParents(form);
+        AssertButtonTextFits(form);
+        using var bitmap = new Bitmap(form.Width, form.Height);
+        form.DrawToBitmap(bitmap, new Rectangle(Point.Empty, form.Size));
+        var path = Path.GetFullPath(outputPath);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        bitmap.Save(path, System.Drawing.Imaging.ImageFormat.Png);
+        Console.WriteLine($"Workspace rendered: {path}");
     }
 
     public static void RenderSettings(string outputPath)

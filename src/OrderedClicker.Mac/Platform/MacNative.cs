@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text;
 using OrderedClicker.Models;
 using OrderedClicker.Services;
 using OrderedClicker.Platform;
@@ -10,11 +11,16 @@ public static class MacNative
     private const string Library = "OrderedClickerNative";
     [DllImport(Library)] public static extern int oc_initialize();
     [DllImport(Library)] public static extern uint oc_poll_events();
+    [DllImport(Library)] internal static extern int oc_dequeue_hotkey(out MacHotKeyEvent value);
     [DllImport(Library)] public static extern int oc_accessibility(int prompt);
     [DllImport(Library)] public static extern int oc_screen_permission(int prompt);
     [DllImport(Library)] internal static extern int oc_cursor(out int x, out int y);
     [DllImport(Library)] internal static extern int oc_move(int x, int y);
-    [DllImport(Library)] internal static extern int oc_click(int releaseOnly);
+    [DllImport(Library)] internal static extern int oc_click_at(int x, int y, int releaseOnly);
+    [DllImport(Library)] internal static extern int oc_own_ui_at(int x, int y);
+    [DllImport(Library)] private static extern int oc_probe_window(int x, int y,
+        [Out] byte[] application, int applicationCapacity, [Out] byte[] title, int titleCapacity,
+        out int foregroundPid, out int windowPid, out int ownProcess);
     [DllImport(Library)] internal static extern int oc_displays([Out] double[] output, int capacity);
     [DllImport(Library)] internal static extern int oc_register_hotkey(int id, uint key, uint modifiers);
     [DllImport(Library)] internal static extern int oc_unregister_hotkey(int id);
@@ -49,9 +55,84 @@ public static class MacNative
     public static CapturedPoint Capture()
     {
         var p = Cursor();
-        var display = Displays().FirstOrDefault(d => d.Bounds.Contains(p.X, p.Y))
+        return CaptureAt(p.X,p.Y);
+    }
+
+    public static CapturedPoint CaptureAt(int x, int y)
+    {
+        var display = Displays().FirstOrDefault(d => d.Bounds.Contains(x, y))
             ?? throw new InvalidOperationException("鼠标不在可用显示器内。");
-        return new(p.X, p.Y, display.DeviceName, display.Bounds, display.Dpi);
+        return new(x, y, display.DeviceName, display.Bounds, display.Dpi);
+    }
+
+    public static IReadOnlyList<MacHotKeyEvent> DrainHotKeys()
+    {
+        var result=new List<MacHotKeyEvent>();
+        while(oc_dequeue_hotkey(out var value)==1) result.Add(value);
+        return result;
+    }
+
+    public static MacWindowSnapshot? ProbeWindow(int x,int y)
+    {
+        var application=new byte[4096]; var title=new byte[16384];
+        if(oc_probe_window(x,y,application,application.Length,title,title.Length,
+            out var foreground,out var hit,out var own)!=1)return null;
+        static string Read(byte[] bytes)
+        {
+            var end=Array.IndexOf(bytes,(byte)0);
+            return Encoding.UTF8.GetString(bytes,0,end<0?bytes.Length:end);
+        }
+        return new(Read(application),Read(title),foreground,hit,own!=0);
+    }
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public readonly struct MacHotKeyEvent(ulong sequence,int id,int x,int y,int positionValid)
+{
+    public readonly ulong Sequence=sequence;
+    public readonly int Id=id, X=x, Y=y, PositionValid=positionValid;
+}
+
+public sealed record MacWindowSnapshot(string ApplicationId,string WindowTitle,
+    int ForegroundProcessId,int HitProcessId,bool IsOwnProcess);
+
+public static class MacTargetWindowGuard
+{
+    public static string? Check(TargetWindowBinding? binding,MacWindowSnapshot? window)
+    {
+        if(binding==null)return null;
+        if(!string.Equals(binding.Platform,"macOS",StringComparison.OrdinalIgnoreCase))
+            return "目标窗口绑定来自其他系统，请重新绑定或清除。";
+        if(window==null||window.ForegroundProcessId<=0||window.HitProcessId<=0||
+            string.IsNullOrWhiteSpace(window.ApplicationId)||string.IsNullOrWhiteSpace(window.WindowTitle))
+            return "无法确认点击位置的实际窗口，请检查辅助功能权限和目标窗口。";
+        if(window.IsOwnProcess)return "点击位置被有序连点器窗口遮挡，请隐藏主窗口或状态窗。";
+        if(window.ForegroundProcessId!=window.HitProcessId)
+            return "点击位置实际命中的窗口不属于前台应用。";
+        if(!string.Equals(binding.ApplicationId,window.ApplicationId,StringComparison.Ordinal)||
+            !string.Equals(binding.WindowTitle,window.WindowTitle,StringComparison.Ordinal))
+            return "前台应用或点击位置实际命中的窗口与绑定不一致。";
+        return null;
+    }
+}
+
+public sealed class MacPlatformServices
+{
+    public Func<IReadOnlyList<MonitorSnapshot>> Displays { get; init; }=MacNative.Displays;
+    public Func<System.Drawing.Point> Cursor { get; init; }=MacNative.Cursor;
+    public Func<bool> Accessibility { get; init; }=()=>MacNative.oc_accessibility(0)==1;
+    public Func<bool> ScreenPermission { get; init; }=()=>MacNative.oc_screen_permission(0)==1;
+    public Func<int,int,int> OwnUiAt { get; init; }=MacNative.oc_own_ui_at;
+    public Func<int,int,MacWindowSnapshot?> ProbeWindow { get; init; }=MacNative.ProbeWindow;
+    public Func<IMouseController> CreateMouse { get; init; }=()=>new MacMouseController();
+    public Func<TimeSpan,CancellationToken,Task> CountdownDelay { get; init; }=Task.Delay;
+    public Func<uint> PollEvents { get; init; }=MacNative.oc_poll_events;
+    public Func<IReadOnlyList<MacHotKeyEvent>> DrainHotKeys { get; init; }=MacNative.DrainHotKeys;
+    public CapturedPoint CaptureAt(int x,int y)
+    {
+        var display=Displays().FirstOrDefault(d=>d.Bounds.Contains(x,y))
+            ??throw new InvalidOperationException("采点位置不在可用显示器内。");
+        return new(x,y,display.DeviceName,display.Bounds,display.Dpi);
     }
 }
 
@@ -74,9 +155,18 @@ public sealed class MacMouseController : IMouseController
     }
     public void LeftClick()
     {
-        if (MacNative.oc_click(0) == 0) throw new InvalidOperationException("点击发送失败，请检查辅助功能权限。");
+        var target=_target??throw new InvalidOperationException("点击前必须先定位目标。");
+        if (MacNative.oc_click_at(target.X,target.Y,0) == 0) throw new InvalidOperationException("点击发送失败，请检查辅助功能权限或窗口遮挡。");
     }
-    public void EnsureLeftButtonUp() => MacNative.oc_click(1);
+    public bool IsAtPosition(int x,int y)
+    {
+        var p=MacNative.Cursor();
+        return Math.Abs((long)p.X-x)<=2&&Math.Abs((long)p.Y-y)<=2;
+    }
+    public void EnsureLeftButtonUp()
+    {
+        if(_target is {} target)MacNative.oc_click_at(target.X,target.Y,1);
+    }
 }
 
 public sealed class MacScreenSampler : IScreenSampler, IDisposable

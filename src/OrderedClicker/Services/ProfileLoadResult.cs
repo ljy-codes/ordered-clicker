@@ -7,7 +7,10 @@ public sealed record ProfileLoadResult(
     ClickProfile? Profile,
     string? ErrorMessage)
 {
-    public static ProfileLoadResult Loaded(ClickProfile profile) => new(true, profile, null);
+    public string? SourceSha256 { get; init; }
+
+    public static ProfileLoadResult Loaded(ClickProfile profile, string? sourceSha256 = null)
+        => new(true, profile, null) { SourceSha256 = sourceSha256 };
 
     public static ProfileLoadResult Failed(string errorMessage) => new(false, null, errorMessage);
 }

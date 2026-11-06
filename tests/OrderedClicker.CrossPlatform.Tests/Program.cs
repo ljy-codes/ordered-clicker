@@ -43,6 +43,7 @@ internal static class Program
                 return Task.CompletedTask;
             }),
             ("ClickExecutionEngine", ClickExecutionEngineTests.RunAsync),
+            ("ExecutionModes", ExecutionModeTests.RunAsync),
             ("ScreenStabilityDetector", ScreenStabilityDetectorTests.RunAsync),
             ("ExecutionReliabilityService", () =>
             {
@@ -94,7 +95,16 @@ internal static class Program
         };
 
         var failed = 0;
-        foreach (var test in tests)
+        var selectedTests = args.Length == 0
+            ? tests
+            : tests.Where(test => args.Contains(test.Name, StringComparer.Ordinal)).ToArray();
+        if (selectedTests.Length == 0)
+        {
+            Console.Error.WriteLine("No matching test groups.");
+            return 1;
+        }
+
+        foreach (var test in selectedTests)
         {
             try
             {
@@ -116,7 +126,7 @@ internal static class Program
             }
         }
 
-        Console.WriteLine($"{tests.Length - failed}/{tests.Length} tests passed");
+        Console.WriteLine($"{selectedTests.Length - failed}/{selectedTests.Length} tests passed");
         return failed == 0 ? 0 : 1;
     }
 }

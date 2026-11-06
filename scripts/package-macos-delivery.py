@@ -3,7 +3,7 @@
 from pathlib import Path
 from html.parser import HTMLParser
 import hashlib, shutil, zipfile, argparse
-parser=argparse.ArgumentParser();parser.add_argument('--version',default='2.1.0');args=parser.parse_args()
+parser=argparse.ArgumentParser();parser.add_argument('--version',default='2.2.0');args=parser.parse_args()
 root=Path(__file__).resolve().parents[1]
 output=root/'交付产品'/f'有序连点器-macOS-{args.version}'
 installers=output/'安装包';installers.mkdir(parents=True,exist_ok=True)

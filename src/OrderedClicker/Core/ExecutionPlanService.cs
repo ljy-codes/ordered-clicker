@@ -1,4 +1,5 @@
 using OrderedClicker.Models;
+using OrderedClicker.Services;
 
 namespace OrderedClicker.Core;
 
@@ -9,6 +10,11 @@ public static class ExecutionPlanService
         ScreenBounds virtualScreen)
     {
         ArgumentNullException.ThrowIfNull(profile);
+        var validationErrors = ProfileValidator.Validate(profile, virtualScreen);
+        if (validationErrors.Count > 0)
+        {
+            throw new InvalidOperationException(string.Join(Environment.NewLine, validationErrors));
+        }
 
         var points = profile.Points
             .Select((point, sourceIndex) => (Point: point, SourceIndex: sourceIndex))
@@ -30,6 +36,15 @@ public static class ExecutionPlanService
         {
             Points = Array.AsReadOnly(points),
             VirtualScreen = virtualScreen,
+            SourceProfile = ProfileService.CloneProfile(profile),
+            TargetWindow = profile.TargetWindow is { } binding
+                ? new TargetWindowBinding
+                {
+                    Platform = binding.Platform,
+                    ApplicationId = binding.ApplicationId,
+                    WindowTitle = binding.WindowTitle
+                }
+                : null,
             TotalSourceRows = profile.Points.Count,
             DisabledSourceRowNumbers = Array.AsReadOnly(profile.Points
                 .Select((point, index) => (point, index))
@@ -43,14 +58,16 @@ public static class ExecutionPlanService
             ScreenStability = new ScreenStabilitySettings
             {
                 Enabled = profile.ScreenStability.Enabled,
+                Region = profile.ScreenStability.Region,
                 SampleIntervalMs = profile.ScreenStability.SampleIntervalMs,
                 StableDurationMs = profile.ScreenStability.StableDurationMs,
                 TimeoutMs = profile.ScreenStability.TimeoutMs,
                 DifferenceTolerance = profile.ScreenStability.DifferenceTolerance
             },
-            StabilityRegion = profile.CoordinateMode == CoordinateMode.CloudDesktopRegion
-                ? profile.CloudDesktopRegion!.Bounds
-                : virtualScreen,
+            StabilityRegion = profile.ScreenStability.Region
+                ?? (profile.CoordinateMode == CoordinateMode.CloudDesktopRegion
+                    ? profile.CloudDesktopRegion!.Bounds
+                    : virtualScreen),
             ProfileFingerprint = ExecutionPlanFingerprintService.Create(profile),
             EstimatedBaseDuration = duration.Base,
             EstimatedMaximumDuration = duration.Maximum

@@ -15,6 +15,12 @@ public static class MacPlanValidation
         errors.AddRange(ProfileValidator.Validate(profile, bounds));
         var formatError = ProfileService.ValidateProfile(profile);
         if (formatError != null) errors.Add(formatError);
+        if(profile.TargetWindow is {} target &&
+            (!string.Equals(target.Platform,"macOS",StringComparison.OrdinalIgnoreCase)||
+             string.IsNullOrWhiteSpace(target.ApplicationId)||string.IsNullOrWhiteSpace(target.WindowTitle)))
+            errors.Add("目标窗口绑定无效或来自其他系统，请重新绑定或清除。");
+        if(profile.ScreenStability.Region is {} custom && !IsRegionCovered(custom,displays))
+            errors.Add("画面检测区域超出当前显示器或包含显示器之间的空隙，请重新选择。");
         if (!settings.SafetyCornerEnabled) errors.Add("运行前必须启用安全角停止。");
         if (profile.CoordinateMode == CoordinateMode.CloudDesktopRegion && profile.CloudDesktopRegion is { } region)
         {
@@ -44,5 +50,25 @@ public static class MacPlanValidation
             }
         }
         return errors.Distinct().ToArray();
+    }
+
+    public static bool IsRegionCovered(ScreenBounds region,IReadOnlyList<MonitorSnapshot> displays)
+    {
+        if(region.Width<=0||region.Height<=0||(long)region.X+region.Width>int.MaxValue||
+            (long)region.Y+region.Height>int.MaxValue)return false;
+        var xs=displays.SelectMany(d=>new[]{d.Bounds.X,d.Bounds.Right})
+            .Append(region.X).Append(region.Right).Where(x=>x>=region.X&&x<=region.Right).Distinct().Order().ToArray();
+        for(var i=0;i<xs.Length-1;i++)
+        {
+            var coveredTo=region.Y;
+            foreach(var bounds in displays.Where(d=>d.Bounds.X<=xs[i]&&d.Bounds.Right>=xs[i+1])
+                .Select(d=>d.Bounds).OrderBy(b=>b.Y))
+            {
+                if(bounds.Y>coveredTo)break;
+                coveredTo=Math.Max(coveredTo,bounds.Bottom);
+            }
+            if(coveredTo<region.Bottom)return false;
+        }
+        return xs.Length>=2;
     }
 }

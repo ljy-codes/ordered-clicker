@@ -5,5 +5,7 @@ public enum CaptureMode
     Idle,
     PointCapture,
     CloudRegionTopLeft,
-    CloudRegionBottomRight
+    CloudRegionBottomRight,
+    StabilityRegionTopLeft,
+    StabilityRegionBottomRight
 }

@@ -11,6 +11,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\OrderedClicker\OrderedClicker.csproj" />
+    <Compile Include="..\OrderedClicker.CrossPlatform.Tests\ExecutionModeTests.cs" Link="ExecutionModeTests.cs" />
   </ItemGroup>
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
   <Target Name="VSTest" DependsOnTargets="Build">

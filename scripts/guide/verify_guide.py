@@ -13,7 +13,7 @@ HTML_PATH = GUIDE_DIR / "有序连点器-使用说明.html"
 PDF_PATH = GUIDE_DIR / "有序连点器-使用说明.pdf"
 
 REQUIRED_TERMS = (
-    "2.1.0",
+    "2.2.0",
     "五步",
     ".oclick",
     "迁移旧方案",
@@ -28,6 +28,12 @@ REQUIRED_TERMS = (
     "可靠断点",
     "云桌面",
     "画面稳定",
+    "演练",
+    "单步",
+    "窗口绑定",
+    "自定义检测区域",
+    "不改变正式执行断点",
+    "v4",
     "有序连点器-免安装.exe",
     "SHA256SUMS.txt",
 )
@@ -72,7 +78,7 @@ def main() -> int:
     pdf_text = "\n".join(page.extract_text() or "" for page in reader.pages)
     verify_text("PDF", pdf_text)
 
-    print("2.1.0 使用说明校验通过")
+    print("2.2.0 使用说明校验通过")
     print(f"- HTML: {HTML_PATH.stat().st_size} bytes，自包含截图")
     print(f"- PDF: {len(reader.pages)} 页，{PDF_PATH.stat().st_size} bytes")
     return 0
@@ -83,7 +89,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--skip-video",
         action="store_true",
-        help="兼容旧命令；2.1.0 交付不包含视频。",
+        help="兼容旧命令；2.2.0 交付不包含视频。",
     )
     parser.parse_args()
     try:

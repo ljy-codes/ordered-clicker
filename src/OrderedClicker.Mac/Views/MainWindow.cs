@@ -23,6 +23,7 @@ public sealed partial class MainWindow : Window
 {
     private readonly AppDataPaths _paths;
     private readonly bool _preview;
+    private readonly MacPlatformServices _platform;
     private readonly ProfileService _profiles;
     private readonly DraftService _drafts;
     private readonly SettingsService _settingsService;
@@ -47,6 +48,9 @@ public sealed partial class MainWindow : Window
     private readonly TextBlock _status = Text("就绪 · 先选择模式，再创建方案", 13);
     private readonly TextBlock _permission = Text("正在检查系统权限", 13);
     private readonly TextBlock _regionText = Text("尚未校准云桌面区域", 14);
+    private readonly TextBlock _stabilityRegionText = Text("检测范围：自动",13);
+    private readonly TextBlock _targetWindowText = Text("未绑定目标窗口",13);
+    private readonly ComboBox _runMode = new() { ItemsSource=new[]{"正常","演练","逐点"}, SelectedIndex=0, Width=130 };
     private readonly TextBlock _summary = Text("配置点位后，生成执行计划。", 15);
     private readonly TextBlock _runText = Text("等待开始", 24);
     private readonly TextBlock _progressText = Text("0 / 0 次点击", 15);
@@ -67,6 +71,7 @@ public sealed partial class MainWindow : Window
     private Window? _hud;
     private TextBlock? _hudText;
     private CancellationTokenSource? _executionCancellation;
+    private CancellationTokenSource? _resumeCancellation;
     private Task? _executionTask;
     private AsyncPauseGate _pause = new();
     private readonly LatestExecutionProgress _latest = new();
@@ -74,10 +79,13 @@ public sealed partial class MainWindow : Window
     private ExecutionCheckpointEnvelope? _recovery;
     private string? _lastStopReason;
     private int _pageIndex;
+    private ExecutionRunMode _activeRunMode;
+    private volatile bool _inputUiVisible;
+    private ulong _lastKeySequence;
 
-    public MainWindow(AppDataPaths paths, bool preview=false)
+    public MainWindow(AppDataPaths paths, bool preview=false, MacPlatformServices? platform=null)
     {
-        _paths=paths; _preview=preview;
+        _paths=paths; _preview=preview; _platform=platform??new();
         _profiles=new(paths); _drafts=new(paths); _settingsService=new(paths); _checkpoints=new(paths); _diagnostics=new(paths);
         var loaded=_settingsService.LoadWithResult(); _settings=loaded.Settings;
         Title="有序连点器 · macOS"; Width=1180; Height=790; MinWidth=1000; MinHeight=660;
@@ -102,8 +110,9 @@ public sealed partial class MainWindow : Window
         _uiTimer.Tick += (_,_) => Tick();
         _draftTimer.Tick += (_,_) => { try { SaveDraft(); } catch(Exception e) { Error(e); } };
         Closing += OnClosing;
+        PropertyChanged += (_,e) => { if(e.Property==IsVisibleProperty)_inputUiVisible=IsVisible; };
         Activated += (_,_) => { if (!_preview && IsVisible) RefreshPermissions(); };
-        KeyDown += (_,e) => { if (e.Key==Avalonia.Input.Key.Escape && _captureMode!=CaptureMode.Idle) EndCapture(); };
+        KeyDown += (_,e) => { if (e.Key==Avalonia.Input.Key.Escape && (_captureMode!=CaptureMode.Idle||_bindingCapture)) EndCapture(); };
     }
 
     private void BuildLayout()
@@ -112,7 +121,7 @@ public sealed partial class MainWindow : Window
         var header=new Grid { ColumnDefinitions=new("*,Auto"), Margin=new(26,20,26,16) };
         var branding=new StackPanel { Spacing=4 };
         branding.Children.Add(Text("有序连点器",25,true));
-        branding.Children.Add(Muted("ORDERED CLICKER  /  macOS 2.1.0"));
+        branding.Children.Add(Muted($"ORDERED CLICKER  /  macOS {BuildVersion}"));
         header.Children.Add(branding);
         _settingsButton=Button("设置", async()=>await ShowSettings());
         var actions=Row(Button("使用说明",()=>{ OpenGuide(); return Task.CompletedTask; }), _settingsButton);
@@ -194,7 +203,12 @@ public sealed partial class MainWindow : Window
         var page=Page("04 / 检查执行计划","检查坐标、循环、预计耗时和安全停止方式。",out var content);
         content.Children.Add(Card("画面稳定检测",_stability,
             Row(Field("采样间隔 / ms",_sample),Field("稳定时长 / ms",_stableFor),Field("超时 / ms",_timeout),Field("变化容差 / 0–1",_tolerance)),
-            Muted("超时自动暂停，确认目标页面可操作后继续。云桌面模式检测校准区域，本机模式检测桌面。")));
+            Row(Button("选择检测区域",()=>{ BeginStabilityRegion(); return Task.CompletedTask; }),
+                Button("重置检测区域",()=>{ _profile.ScreenStability.Region=null; RefreshRegion(); Changed(); return Task.CompletedTask; })),
+            _stabilityRegionText));
+        content.Children.Add(Card("目标窗口",_targetWindowText,
+            Row(Button("2 秒后绑定窗口",CaptureTargetWindow),
+                Button("清除绑定",()=>{ _profile.TargetWindow=null; RefreshRegion(); Changed(); return Task.CompletedTask; }))));
         content.Children.Add(Card("执行概览",_summary,Button("生成并确认执行计划",()=>CheckPlan(false),true)));
         _editable.Add(content);return page;
     }
@@ -204,11 +218,13 @@ public sealed partial class MainWindow : Window
         var page=Page("05 / 运行与日志","开始前有 3 秒倒计时，期间可切换到目标应用。",out var content);
         _start=Button("开始执行",StartPause,true); _stop=Button("停止",()=>{ Stop("已手动停止");return Task.CompletedTask; }); _stop.Classes.Add("danger");
         _resume=Button("从断点继续",ResumeRecovery);_resume.IsEnabled=false;
-        content.Children.Add(Card("执行状态",_runText,_progressText,_bar,Row(_start,_stop,_resume)));
+        content.Children.Add(Card("执行状态",_runText,_progressText,_bar,Row(_runMode,_start,_stop,_resume)));
+        _editable.Add(_runMode);
         content.Children.Add(Card("日志与数据",Row(Button("执行日志",()=>OpenFolder(_paths.Logs)),Button("诊断日志",()=>OpenFolder(_paths.Diagnostics)),Button("数据目录",()=>OpenFolder(_paths.Root))),
             Muted("每次运行记录结果、点击计数及停止位置。日志保留最多 30 天、1000 个文件、100 MB。")));
         return page;
     }
+    private static string BuildVersion=>typeof(MainWindow).Assembly.GetName().Version?.ToString(3)??"2.2.0";
 
     internal void ShowPage(int index)
     {

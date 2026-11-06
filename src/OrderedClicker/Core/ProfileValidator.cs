@@ -6,7 +6,27 @@ public static class ProfileValidator
 {
     public static IReadOnlyList<string> Validate(ClickProfile profile, ScreenBounds virtualScreen)
     {
+        ArgumentNullException.ThrowIfNull(profile);
         var errors = new List<string>();
+
+        if (profile.ScreenStability.Region is { } region
+            && (region.Width <= 0
+                || region.Height <= 0
+                || region.X < virtualScreen.X
+                || region.Y < virtualScreen.Y
+                || (long)region.X + region.Width > (long)virtualScreen.X + virtualScreen.Width
+                || (long)region.Y + region.Height > (long)virtualScreen.Y + virtualScreen.Height))
+        {
+            errors.Add("画面稳定检测区域必须宽高为正且完全位于当前虚拟桌面内。");
+        }
+
+        if (profile.TargetWindow is { } binding
+            && (string.IsNullOrWhiteSpace(binding.Platform)
+                || string.IsNullOrWhiteSpace(binding.ApplicationId)
+                || string.IsNullOrWhiteSpace(binding.WindowTitle)))
+        {
+            errors.Add("目标窗口绑定必须包含平台、应用标识和窗口标题。");
+        }
 
         if (profile.TotalLoops is < 1 or > 100000)
         {

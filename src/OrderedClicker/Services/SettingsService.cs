@@ -9,6 +9,8 @@ namespace OrderedClicker.Services;
 
 public sealed class SettingsService
 {
+    private bool _preserveOriginal;
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -40,11 +42,6 @@ public sealed class SettingsService
 
     public SettingsLoadResult LoadWithResult()
     {
-        if (!File.Exists(SettingsPath))
-        {
-            return new SettingsLoadResult(new AppSettings(), null, null);
-        }
-
         try
         {
             var json = File.ReadAllText(SettingsPath, Encoding.UTF8);
@@ -102,23 +99,52 @@ public sealed class SettingsService
                 settings.StopHotKey = HotKeyBindingService.DefaultStop;
             }
 
+            _preserveOriginal = false;
             return new SettingsLoadResult(settings, null, null);
         }
         catch (Exception exception) when (
-            exception is IOException
-            or UnauthorizedAccessException
-            or JsonException
-            or NotSupportedException)
+            exception is FileNotFoundException or DirectoryNotFoundException)
         {
-            var brokenPath = MoveBrokenSettingsAside();
+            _preserveOriginal = false;
+            return new SettingsLoadResult(new AppSettings(), null, null);
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException)
+        {
+            _preserveOriginal = true;
             return new SettingsLoadResult(
                 new AppSettings(),
-                $"设置文件已损坏，已恢复默认设置。原文件保存在：{brokenPath}",
+                $"暂时无法读取设置文件，已使用默认设置；原文件保持不变，请重新加载后再保存。原因：{exception.Message}",
+                null);
+        }
+        catch (Exception exception) when (
+            exception is JsonException or NotSupportedException)
+        {
+            var brokenPath = MoveBrokenSettingsAside();
+            _preserveOriginal = brokenPath is null;
+            return new SettingsLoadResult(
+                new AppSettings(),
+                brokenPath is null
+                    ? "设置文件内容无效，已使用默认设置；无法隔离原文件，已保留原路径，请重新加载后再保存。"
+                    : $"设置文件已损坏，已恢复默认设置。原文件保存在：{brokenPath}",
                 brokenPath);
         }
     }
 
-    private string MoveBrokenSettingsAside()
+    private string? MoveBrokenSettingsAside()
+    {
+        try
+        {
+            return MoveBrokenSettingsAsideCore();
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    private string MoveBrokenSettingsAsideCore()
     {
         var directory = Path.GetDirectoryName(SettingsPath)
                         ?? throw new InvalidOperationException("设置文件路径无效。");
@@ -139,6 +165,11 @@ public sealed class SettingsService
 
     public void Save(AppSettings settings)
     {
+        if (_preserveOriginal)
+        {
+            throw new IOException("上次读取设置失败，原文件已受到保护；请成功重新加载后再保存。");
+        }
+
         var directory = Path.GetDirectoryName(SettingsPath);
         if (string.IsNullOrWhiteSpace(directory))
         {
